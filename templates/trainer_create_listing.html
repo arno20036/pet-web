@@ -1,0 +1,214 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>建立刊登內容</h2>
+<div class="card">
+    <form method="post" enctype="multipart/form-data">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <!-- Left Column -->
+            <div>
+                <div class="form-group">
+                    <label for="pet_type">寵物類型</label>
+                    <select id="pet_type" name="pet_type" class="form-control" required>
+                        <option value="dog">狗</option>
+                        <option value="cat">貓</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="breed">寵物品種</label>
+                    <input type="text" id="breed" name="breed" class="form-control" placeholder="例如：柴犬、米克斯" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pet_name">寵物暱稱</label>
+                    <input type="text" id="pet_name" name="pet_name" class="form-control" placeholder="例如：小白、小黑"
+                        required>
+                </div>
+
+                <div class="form-group">
+                    <label for="price">服務價格 (每小時)</label>
+                    <input type="number" id="price" name="price" class="form-control" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="cancellation_hours">取消訂單時限 (小時)</label>
+                    <input type="number" id="cancellation_hours" name="cancellation_hours" class="form-control" min="0"
+                        required>
+                    <small class="text-muted">最後取消時限</small>
+                </div>
+
+                <div class="form-group">
+                    <label>上傳寵物圖片</label>
+                    <div class="image-upload-container"
+                        style="border: 2px dashed #e5e7eb; padding: 20px; border-radius: 8px; position: relative; min-height: 200px; background-color: #f9fafb;">
+
+                        <!-- Preview Grid -->
+                        <div id="image-preview-grid"
+                            style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 50px;">
+                            <!-- Previews will be inserted here -->
+                            <div id="placeholder-text"
+                                style="grid-column: 1 / -1; text-align: center; color: #9ca3af; padding-top: 60px;">
+                                <i class="fas fa-images"
+                                    style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                                尚未選擇照片
+                            </div>
+                        </div>
+
+                        <!-- Add Button (Bottom Right) -->
+                        <div style="position: absolute; bottom: 15px; right: 15px;">
+                            <label for="pet_images" class="btn-add-scan"
+                                style="background-color: var(--primary-color); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+                                <span style="font-size: 2rem; line-height: 1; padding-bottom: 4px;">+</span>
+                            </label>
+                            <input type="file" id="pet_images" name="pet_images" accept="image/*" multiple
+                                style="display: none;" onchange="handleImageSelect(this)" required>
+                        </div>
+                    </div>
+                    <small class="text-muted" style="display: block; margin-top: 5px;">提示：可一次選取多張照片。</small>
+                </div>
+
+                <style>
+                    .btn-add-scan:hover {
+                        transform: scale(1.1);
+                        background-color: #2563eb;
+                    }
+                </style>
+
+                <script>
+                    function handleImageSelect(input) {
+                        const container = document.getElementById('image-preview-grid');
+                        const placeholder = document.getElementById('placeholder-text');
+
+                        // Clear previous previews (except placeholder logic handled below)
+                        // Actually easier to just clear innerHTML and re-add placeholder if empty, but let's do robust way
+
+                        if (input.files && input.files.length > 0) {
+                            container.innerHTML = ''; // Clear everything
+
+                            Array.from(input.files).forEach(file => {
+                                const reader = new FileReader();
+                                reader.onload = function (e) {
+                                    const wrapper = document.createElement('div');
+                                    wrapper.style.position = 'relative';
+                                    wrapper.style.aspectRatio = '4/3';
+                                    wrapper.style.borderRadius = '6px';
+                                    wrapper.style.overflow = 'hidden';
+                                    wrapper.style.border = '1px solid #ddd';
+                                    wrapper.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+
+                                    const img = document.createElement('img');
+                                    img.src = e.target.result;
+                                    img.style.width = '100%';
+                                    img.style.height = '100%';
+                                    img.style.objectFit = 'cover';
+
+                                    wrapper.appendChild(img);
+                                    container.appendChild(wrapper);
+                                }
+                                reader.readAsDataURL(file);
+                            });
+                        } else {
+                            // If user cancelled selection or cleared, show placeholder? 
+                            // Usually input.files remains if cancel is clicked in chrome, but if cleared:
+                            container.innerHTML = `
+                            <div id="placeholder-text" style="grid-column: 1 / -1; text-align: center; color: #9ca3af; padding-top: 60px;">
+                                <i class="fas fa-images" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                                尚未選擇照片
+                            </div>`;
+                        }
+                    }
+                </script>
+
+                <!-- Right Column -->
+                <div>
+                    <div class="form-group">
+                        <label>可預約時段</label>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週一"> 週一</label>
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週二"> 週二</label>
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週三"> 週三</label>
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週四"> 週四</label>
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週五"> 週五</label>
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週六"> 週六</label>
+                            <label style="display: inline-block; margin-right: 10px;"><input type="checkbox" name="days"
+                                    value="週日"> 週日</label>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <select name="start_time" class="form-control" style="width: auto;">
+                                {% for i in range(24) %}
+                                <option value="{{ '%02d:00' % i }}">{{ '%02d:00' % i }}</option>
+                                {% endfor %}
+                            </select>
+                            <span>至</span>
+                            <select name="end_time" class="form-control" style="width: auto;">
+                                {% for i in range(24) %}
+                                <option value="{{ '%02d:00' % i }}">{{ '%02d:00' % i }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="introduction">寵物介紹 / 服務特色</label>
+                        <textarea id="introduction" name="introduction" class="form-control" rows="6"
+                            placeholder="介紹這隻寵物的個性，或者您的服務特色..." style="resize: none;" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rules">相關規定</label>
+                        <textarea id="rules" name="rules" class="form-control" rows="4"
+                            placeholder="例如：需自備牽繩、不接具攻擊性寵物..." style="resize: none;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; text-align: center;">
+                <button type="button" id="submitBtn" class="btn btn-primary"
+                    style="padding: 10px 40px; font-size: 1.1rem;">刊登申請</button>
+            </div>
+    </form>
+</div>
+
+<script>
+    document.getElementById('submitBtn').addEventListener('click', function () {
+        const form = this.closest('form');
+
+        // Check if form is valid
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        Swal.fire({
+            title: '確定送出刊登申請？',
+            html: `
+            <div style="text-align: left; padding: 10px;">
+                <p style="margin-bottom: 10px;">送出後您的刊登將會進入審核流程：</p>
+                <ul style="color: #666; font-size: 0.9rem; margin-left: 20px;">
+                    <li>管理員將會審核您的刊登內容</li>
+                    <li>審核通過後才會公開顯示</li>
+                    <li>審核期間您可以在「管理刊登」查看狀態</li>
+                </ul>
+            </div>
+        `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3b82f6',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: '確定送出',
+            cancelButtonText: '返回修改'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                form.submit();
+            }
+        });
+    });
+</script>
+{% endblock %}

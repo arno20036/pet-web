@@ -1,0 +1,212 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>編輯刊登 - {{ listing['pet_name'] or '未命名寵物' }}</h2>
+<div class="card">
+    <form method="post" enctype="multipart/form-data">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <!-- Left Column -->
+            <div>
+                <div class="form-group">
+                    <label>基本資訊 (不可修改)</label>
+                    <p class="form-control" style="background-color: #f3f4f6;">
+                        {{ listing['pet_type']|replace('dog', '狗')|replace('cat', '貓') }} - {{ listing['breed'] }}
+                        {% if listing['pet_name'] %} ({{ listing['pet_name'] }}){% endif %}
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label>管理照片</label>
+                    <div class="image-manager-container"
+                        style="border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; position: relative;">
+                        <!-- Images Grid -->
+                        <div class="image-grid"
+                            style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 40px;">
+                            <!-- Added bottom margin for the absolute button -->
+                            {% for image in images %}
+                            <div class="image-item" onclick="toggleDelete(this, '{{ image }}')"
+                                style="position: relative; aspect-ratio: 4/3; cursor: pointer; overflow: hidden; border-radius: 6px;">
+                                <img src="{{ url_for('uploaded_file', filename=image) }}"
+                                    style="width: 100%; height: 100%; object-fit: cover; transition: all 0.3s ease;">
+
+                                <!-- Hover Overlay for Delete -->
+                                <div class="delete-overlay"
+                                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(220, 38, 38, 0.7); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease;">
+                                    <span style="color: white; font-weight: bold;"><i class="fas fa-trash-alt"></i>
+                                        刪除</span>
+                                </div>
+
+                                <!-- Deleted State Overlay -->
+                                <div class="deleted-mark"
+                                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); display: flex; align-items: center; justify-content: center; display: none;">
+                                    <span
+                                        style="color: #dc2626; font-weight: bold; border: 2px solid #dc2626; padding: 5px 10px; border-radius: 4px;">已標記刪除</span>
+                                </div>
+
+                                <!-- Hidden Checkbox -->
+                                <input type="checkbox" name="delete_images" value="{{ image }}" id="del_{{ image }}"
+                                    style="display: none;">
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <!-- Add Button (Bottom Right) -->
+                        <div style="position: absolute; bottom: 15px; right: 15px;">
+                            <label for="new_pet_images" class="btn-add-scan"
+                                style="background-color: var(--primary-color); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+                                <span style="font-size: 1.5rem; line-height: 1;">+</span>
+                            </label>
+                            <input type="file" id="new_pet_images" name="new_pet_images" accept="image/*" multiple
+                                style="display: none;" onchange="previewNewImages(this)">
+                        </div>
+                    </div>
+                    <!-- New Images Preview Container -->
+                    <div id="new-images-preview" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+                    </div>
+                </div>
+
+                <style>
+                    .image-item:hover .delete-overlay {
+                        opacity: 1 !important;
+                    }
+
+                    .image-item.deleted img {
+                        filter: grayscale(100%);
+                    }
+
+                    .image-item.deleted .deleted-mark {
+                        display: flex !important;
+                    }
+
+                    .image-item.deleted:hover .delete-overlay {
+                        opacity: 0 !important;
+                        /* Don't show delete overlay if already marked */
+                    }
+
+                    /* Add interaction to un-delete when clicking 'deleted-mark' container? 
+                       Actually onclick on parent handles toggle. */
+
+                    .btn-add-scan:hover {
+                        transform: scale(1.1);
+                        background-color: #2563eb;
+                        /* Darker blue */
+                    }
+                </style>
+
+                <script>
+                    function toggleDelete(element, filename) {
+                        const checkbox = document.getElementById('del_' + filename);
+
+                        // If we are about to mark as deleted (currently not checked)
+                        if (!checkbox.checked) {
+                            if (confirm('確定要刪除這張照片嗎？')) {
+                                checkbox.checked = true;
+                                element.classList.add('deleted');
+                            }
+                        } else {
+                            // If unmarking (restoring), no confirmation needed
+                            checkbox.checked = false;
+                            element.classList.remove('deleted');
+                        }
+                    }
+
+                    function previewNewImages(input) {
+                        const container = document.getElementById('new-images-preview');
+                        container.innerHTML = ''; // Clear previous preview
+
+                        if (input.files) {
+                            Array.from(input.files).forEach(file => {
+                                const reader = new FileReader();
+                                reader.onload = function (e) {
+                                    const img = document.createElement('img');
+                                    img.src = e.target.result;
+                                    img.style.width = '60px';
+                                    img.style.height = '60px';
+                                    img.style.objectFit = 'cover';
+                                    img.style.borderRadius = '4px';
+                                    img.style.border = '1px solid #ddd';
+                                    container.appendChild(img);
+                                }
+                                reader.readAsDataURL(file);
+                            });
+
+                            if (input.files.length > 0) {
+                                const count = document.createElement('div');
+                                count.style.alignSelf = 'center';
+                                count.style.fontSize = '0.9rem';
+                                count.style.color = '#666';
+                                count.textContent = `+ ${input.files.length} 張新照片`;
+                                container.appendChild(count);
+                            }
+                        }
+                    }
+                </script>
+
+                <div class="form-group">
+                    <label for="price">服務價格 (每小時)</label>
+                    <input type="number" id="price" name="price" class="form-control" min="0"
+                        value="{{ listing['price'] }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="cancellation_hours">取消訂單時限 (小時)</label>
+                    <input type="number" id="cancellation_hours" name="cancellation_hours" class="form-control" min="0"
+                        value="{{ listing['cancellation_hours'] }}" required>
+                    <small class="text-muted">最後取消時限</small>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div>
+                <div class="form-group">
+                    <label>可預約時段</label>
+                    <div style="margin-bottom: 10px;">
+                        {% set days = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'] %}
+                        {% for day in days %}
+                        <label style="display: inline-block; margin-right: 10px;">
+                            <input type="checkbox" name="days" value="{{ day }}" {% if day in slot_data['days']
+                                %}checked{% endif %}> {{ day }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select name="start_time" class="form-control" style="width: auto;">
+                            {% for i in range(24) %}
+                            {% set time = '%02d:00' % i %}
+                            <option value="{{ time }}" {% if time==slot_data['start_time'] %}selected{% endif %}>{{ time
+                                }}</option>
+                            {% endfor %}
+                        </select>
+                        <span>至</span>
+                        <select name="end_time" class="form-control" style="width: auto;">
+                            {% for i in range(24) %}
+                            {% set time = '%02d:00' % i %}
+                            <option value="{{ time }}" {% if time==slot_data['end_time'] %}selected{% endif %}>{{ time
+                                }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="introduction">寵物介紹 / 服務特色</label>
+                    <textarea id="introduction" name="introduction" class="form-control" rows="6" style="resize: none;"
+                        required>{{ listing['introduction'] }}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="rules">相關規定</label>
+                    <textarea id="rules" name="rules" class="form-control" rows="4"
+                        style="resize: none;">{{ listing['rules'] }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 30px; display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-primary">修改申請</button>
+            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+                style="text-decoration: none; color: #666;">取消</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

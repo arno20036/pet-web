@@ -1,0 +1,71 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>申請詳情 - {{ app['name'] }}</h2>
+<div class="card">
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('admin_trainer_review') }}" style="color: var(--text-muted); text-decoration: none;">&larr; 返回列表</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <!-- Member Information -->
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">會員資料</h3>
+            <div class="form-group">
+                <label>姓名 / 暱稱</label>
+                <p>{{ app['name'] }} ({{ app['nickname'] }})</p>
+            </div>
+            <div class="form-group">
+                <label>電子信箱</label>
+                <p>{{ app['email'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>性別</label>
+                <p>{{ '生理男' if app['gender'] == 'male' else '生理女' }}</p>
+            </div>
+            <div class="form-group">
+                <label>出生年月日</label>
+                <p>{{ app['dob'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>聯絡電話</label>
+                <p>{{ app['phone'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>居住地區</label>
+                <p>{{ app['city'] }} {{ app['district'] }}</p>
+            </div>
+        </div>
+
+        <!-- Application Information -->
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">申請資料</h3>
+            <div class="form-group">
+                <label>實務經驗</label>
+                <p>{{ app['experience_years'] }} 年</p>
+            </div>
+            <div class="form-group">
+                <label>申請時間</label>
+                <p>{{ app['created_at'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>證照檔案</label>
+                <div style="margin-top: 10px;">
+                    <a href="{{ url_for('uploaded_file', filename=app['certificate_filename']) }}" target="_blank" class="btn btn-outline" style="display: block; text-align: center;">查看證照檔案</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+    
+    <div style="display: flex; gap: 10px;">
+        <form action="{{ url_for('admin_approve_application', app_id=app['id']) }}" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('確定要通過審核嗎？此操作將會把該會員升級為訓練師。')">通過審核</button>
+        </form>
+        <form action="{{ url_for('admin_reject_application', app_id=app['id']) }}" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;" onclick="return confirm('確定要駁回申請嗎？')">駁回申請</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

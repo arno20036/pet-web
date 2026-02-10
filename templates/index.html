@@ -1,0 +1,299 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div id="hero-background"
+    style="position: fixed; top: -20px; left: 0; width: 100%; height: calc(100vh + 20px); background-image: url('{{ url_for('static', filename='hero_bg.jpg') }}'); background-size: cover; background-position: center; z-index: -2;">
+</div>
+
+<div class="hero-section text-center" style="margin-bottom: 40px; padding: 20px 20px 60px 20px;">
+    <h1
+        style="text-shadow: 0 4px 12px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.6); color: white; font-weight: 800; letter-spacing: 1px;">
+        歡迎來到
+        寵物陪伴刊登平台</h1>
+    <p class="lead"
+        style="text-shadow: 0 3px 8px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.6); color: white; font-weight: 600; font-size: 1.25rem;">
+        為您尋找最棒的毛小孩玩伴，讓愛與陪伴無所不在。</p>
+
+    <!-- Search Form -->
+    <div style="max-width: 600px; margin: 30px auto;">
+        <form action="{{ url_for('index') }}" method="get" style="display: flex; gap: 10px;">
+            <input type="text" name="q" value="{{ query }}" placeholder="搜尋寵物類型、品種或關鍵字..." class="form-control"
+                style="flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc;">
+            <input type="hidden" name="category" id="categoryInput" value="{{ category }}">
+            <button type="submit" class="btn btn-primary" style="padding: 10px 25px;">搜尋</button>
+        </form>
+
+        <!-- Category Tabs -->
+        <div style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
+            <a href="{{ url_for('index') }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
+                      {% if not category %}background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+                      {% else %}background: #f3f4f6; color: #666; border: 1px solid #e5e7eb;{% endif %}"
+                onmouseover="this.style.transform='translateY(-3px) scale(1.05)'; {% if not category %}this.style.boxShadow='0 8px 20px rgba(59,130,246,0.5)';{% else %}this.style.boxShadow='0 6px 15px rgba(0,0,0,0.15)'; this.style.background='#e5e7eb';{% endif %}"
+                onmouseout="this.style.transform='translateY(0) scale(1)'; {% if not category %}this.style.boxShadow='0 4px 12px rgba(59,130,246,0.4)';{% else %}this.style.boxShadow='none'; this.style.background='#f3f4f6';{% endif %}">
+                <i class="fas fa-paw"></i> 全部寵物
+            </a>
+            <a href="{{ url_for('index', category='dog', q=query) }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
+                      {% if category == 'dog' %}background: linear-gradient(135deg, #f59e0b, #d97706); color: white; box-shadow: 0 4px 12px rgba(245,158,11,0.4);
+                      {% else %}background: #f3f4f6; color: #666; border: 1px solid #e5e7eb;{% endif %}"
+                onmouseover="this.style.transform='translateY(-3px) scale(1.05)'; {% if category == 'dog' %}this.style.boxShadow='0 8px 20px rgba(245,158,11,0.5)';{% else %}this.style.boxShadow='0 6px 15px rgba(0,0,0,0.15)'; this.style.background='#e5e7eb';{% endif %}"
+                onmouseout="this.style.transform='translateY(0) scale(1)'; {% if category == 'dog' %}this.style.boxShadow='0 4px 12px rgba(245,158,11,0.4)';{% else %}this.style.boxShadow='none'; this.style.background='#f3f4f6';{% endif %}">
+                <i class="fas fa-dog"></i> 狗
+            </a>
+            <a href="{{ url_for('index', category='cat', q=query) }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
+                      {% if category == 'cat' %}background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; box-shadow: 0 4px 12px rgba(139,92,246,0.4);
+                      {% else %}background: #f3f4f6; color: #666; border: 1px solid #e5e7eb;{% endif %}"
+                onmouseover="this.style.transform='translateY(-3px) scale(1.05)'; {% if category == 'cat' %}this.style.boxShadow='0 8px 20px rgba(139,92,246,0.5)';{% else %}this.style.boxShadow='0 6px 15px rgba(0,0,0,0.15)'; this.style.background='#e5e7eb';{% endif %}"
+                onmouseout="this.style.transform='translateY(0) scale(1)'; {% if category == 'cat' %}this.style.boxShadow='0 4px 12px rgba(139,92,246,0.4)';{% else %}this.style.boxShadow='none'; this.style.background='#f3f4f6';{% endif %}">
+                <i class="fas fa-cat"></i> 貓
+            </a>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- Content Wrapper with Solid Background -->
+<div
+    style="background-color: #f8f9fa; position: relative; z-index: 1; padding-top: 50px; padding-bottom: 50px; border-radius: 30px 30px 0 0; min-height: 100vh;">
+
+    <!-- Top Rated Section -->
+    {% if top_rated %}
+    <div id="top-rated-section" class="container"
+        style="max-width: 1200px; margin: 0 auto 40px auto; padding: 0 20px; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0;"><i class="fas fa-trophy" style="color: #f59e0b;"></i> 好評排行榜</h3>
+            <div style="display: flex; gap: 10px;">
+                <button id="topRatedPrev" class="btn"
+                    style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid #ddd; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button id="topRatedNext" class="btn"
+                    style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid #ddd; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Outer wrapper with padding for shadows -->
+        <div style="margin: -10px; padding: 10px; overflow: hidden;">
+            <div id="topRatedTrack" style="display: flex; gap: 20px; transition: transform 0.3s ease;">
+                {% for item in top_rated %}
+                <div class="card"
+                    style="min-width: 280px; width: 280px; flex-shrink: 0; padding: 0; overflow: hidden; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; transition: all 0.3s ease; cursor: pointer;"
+                    onmouseover="this.style.transform='translateY(-8px)'; this.style.boxShadow='0 12px 24px rgba(0,0,0,0.2)'; this.querySelector('img').style.transform='scale(1.1)';"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(0,0,0,0.1)'; this.querySelector('img').style.transform='scale(1)';">
+                    <!-- Rank Badge -->
+                    <div
+                        style="position: absolute; top: 10px; left: 10px; z-index: 10; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+                        {{ loop.index }}
+                    </div>
+
+                    <!-- Image -->
+                    <div style="height: 180px; overflow: hidden;">
+                        <a href="{{ url_for('listing_detail', listing_id=item['id']) }}">
+                            <img src="{{ url_for('uploaded_file', filename=item['pet_image']) }}"
+                                style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease;">
+                        </a>
+                    </div>
+
+                    <div style="padding: 16px;">
+                        <h4 style="margin: 0 0 8px 0; font-weight: bold; color: #333; font-size: 1rem;">
+                            <a href="{{ url_for('listing_detail', listing_id=item['id']) }}"
+                                style="text-decoration: none; color: inherit;">
+                                {{ item['pet_name'] or '未命名寵物' }}
+                            </a>
+                        </h4>
+
+                        <!-- Rating Stars -->
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <div style="color: #f59e0b;">
+                                {% set full_stars = item['avg_rating'] | int %}
+                                {% for i in range(5) %}
+                                {% if i < full_stars %} <i class="fas fa-star"></i>
+                                    {% elif i < item['avg_rating'] %} <i class="fas fa-star-half-alt"></i>
+                                        {% else %}
+                                        <i class="far fa-star"></i>
+                                        {% endif %}
+                                        {% endfor %}
+                            </div>
+                            <span style="font-weight: 600; color: #333;">{{ "%.1f" | format(item['avg_rating'])
+                                }}</span>
+                            <span style="color: #888; font-size: 0.85rem;">({{ item['review_count'] }}則評價)</span>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: #666; font-size: 0.85rem;">
+                                {{ item['pet_type']|replace('dog', '狗')|replace('cat', '貓') }}
+                            </span>
+                            <span style="font-weight: bold; color: var(--primary-color);">${{ item['price'] }}/hr</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const track = document.getElementById('topRatedTrack');
+            const prevBtn = document.getElementById('topRatedPrev');
+            const nextBtn = document.getElementById('topRatedNext');
+            let currentIndex = 0;
+            const cardWidth = 300; // 280px card + 20px gap
+            const totalCards = {{ top_rated | length
+        }};
+        const visibleCards = Math.floor(track.parentElement.offsetWidth / cardWidth) || 1;
+        const maxIndex = Math.max(0, totalCards - visibleCards);
+
+        prevBtn.addEventListener('click', function () {
+            currentIndex = Math.max(0, currentIndex - 1);
+            track.style.transform = `translateX(-${currentIndex * cardWidth}px)`;
+        });
+
+        nextBtn.addEventListener('click', function () {
+            currentIndex = Math.min(maxIndex, currentIndex + 1);
+            track.style.transform = `translateX(-${currentIndex * cardWidth}px)`;
+        });
+}) ();
+    </script>
+    {% endif %}
+
+
+    <div class="container" style="max-width: 1200px; margin: 0 auto; padding: 20px;">
+        {% if page_title %}
+        <h3 style="margin-bottom: 20px;">{{ page_title }}</h3>
+        {% elif query and category %}
+        <h3 style="margin-bottom: 20px;">搜尋「{{ query }}」在 {% if category == 'dog' %}狗{% elif category == 'cat' %}貓{%
+            endif
+            %} 分類的結果</h3>
+        {% elif query %}
+        <h3 style="margin-bottom: 20px;">搜尋結果: "{{ query }}"</h3>
+        {% elif category == 'dog' %}
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-dog" style="color: #f59e0b;"></i> 狗狗刊登</h3>
+        {% elif category == 'cat' %}
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-cat" style="color: #8b5cf6;"></i> 貓咪刊登</h3>
+        {% else %}
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-paw" style="color: #3b82f6;"></i> 寵物一覽</h3>
+        {% endif %}
+
+        {% if listings %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 30px;">
+            {% for listing in listings %}
+            <div class="card listing-card"
+                style="padding: 0; overflow: hidden; border: 1px solid #eee; border-radius: 10px; transition: all 0.3s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer;"
+                onmouseover="this.style.transform='translateY(-8px)'; this.style.boxShadow='0 12px 24px rgba(0,0,0,0.15)'; this.querySelector('img').style.transform='scale(1.1)';"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 5px rgba(0,0,0,0.05)'; this.querySelector('img').style.transform='scale(1)';">
+                <div style="height: 200px; overflow: hidden;">
+                    <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}">
+                        <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+                            style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease;">
+                    </a>
+                </div>
+                <div style="padding: 20px;">
+                    <h4 style="margin-top: 0; margin-bottom: 10px; font-weight: bold; color: #333;">
+                        <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}"
+                            style="text-decoration: none; color: inherit;">
+                            {{ listing['pet_name'] or '未命名寵物' }}
+                        </a>
+                    </h4>
+                    <div style="color: #666; margin-bottom: 15px; font-size: 0.9rem;">
+                        {{ listing['pet_type']|replace('dog', '狗')|replace('cat', '貓') }} - {{ listing['breed'] }}
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <span style="font-size: 1.1rem; font-weight: bold; color: var(--primary-color);">${{
+                            listing['price'] }} / hr</span>
+                    </div>
+                    <!-- Since we don't have a public detail view yet, we might point to listing detail if logged in or generic view? -->
+                    <!-- Assuming trainer_listing_detail is for trainers owner. We need a public view. -->
+                    <!-- Wait, I saw trainer_listing_detail checks ownership. I should check if there is a public view. -->
+                    <!-- If not, I might need to create one or reuse trainer_listing_detail by relaxing permission? -->
+                    <!-- Actually, checking 'app.py', there is no public view yet. -->
+                    <!-- For now, I will just show the card. User didn't ask for public detail view yet, just search. -->
+                    <!-- Usually search implies clicking. I'll add a 'view' button but it might need a route. -->
+                    <!-- I'll add a placeholder link or just the card for now. -->
+                    <!-- Better: Create a basic public detail route? Or just leave it as display for now. -->
+                    <!-- Let's just show info for now. -->
+                    <div
+                        style="color: #888; font-size: 0.85rem; height: 40px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                        {{ listing['introduction'] }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="text-align: center; color: #666; padding: 40px; background: #f9f9f9; border-radius: 10px;">
+            {% if query %}
+            沒有找到符合 "{{ query }}" 的刊登內容。
+            {% else %}
+            目前還沒有刊登內容。
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Back to Top Button -->
+    <button id="backToTopBtn" onclick="scrollToTop()" style="position: fixed; bottom: 30px; left: 30px; width: 50px; height: 50px; border-radius: 50%; 
+           background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; 
+           cursor: pointer; box-shadow: 0 4px 15px rgba(59,130,246,0.4); 
+           display: none; align-items: center; justify-content: center; 
+           transition: all 0.3s ease; z-index: 1000;"
+        onmouseover="this.style.transform='translateY(-5px) scale(1.1)'; this.style.boxShadow='0 8px 25px rgba(59,130,246,0.5)';"
+        onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 4px 15px rgba(59,130,246,0.4)';">
+        <i class="fas fa-arrow-up" style="font-size: 1.2rem;"></i>
+    </button>
+
+    <script>
+        // Back to Top Button Logic
+        const backToTopBtn = document.getElementById('backToTopBtn');
+
+        window.addEventListener('scroll', function () {
+            if (window.scrollY > 300) {
+                backToTopBtn.style.display = 'flex';
+            } else {
+                backToTopBtn.style.display = 'none';
+            }
+        });
+
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        (function () {
+            const track = document.getElementById('topRatedTrack');
+            if (!track) return;
+            const prevBtn = document.getElementById('topRatedPrev');
+            const nextBtn = document.getElementById('topRatedNext');
+            let currentIndex = 0;
+            const cardWidth = 300; // 280px card + 20px gap
+
+            // Safety check for empty track
+            if (track.children.length === 0) return;
+
+            const totalCards = track.children.length;
+            const visibleCards = Math.floor(track.parentElement.offsetWidth / cardWidth) || 1;
+            const maxIndex = Math.max(0, totalCards - visibleCards);
+
+            if (prevBtn) {
+                prevBtn.addEventListener('click', function () {
+                    currentIndex = 0;
+                    track.style.transform = `translateX(0px)`;
+                });
+            }
+
+            if (nextBtn) {
+                nextBtn.addEventListener('click', function () {
+                    currentIndex = maxIndex;
+                    track.style.transform = `translateX(-${currentIndex * cardWidth}px)`;
+                });
+            }
+        })();
+    </script>
+</div> <!-- End Content Wrapper -->
+{% endblock %}
+```

@@ -1,0 +1,182 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>管理刊登內容</h2>
+<div class="card">
+    <div class="tabs" style="display: flex; border-bottom: 2px solid #eee; margin-bottom: 20px;">
+        <div class="tab-item active" onclick="switchTab('published')"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid var(--primary-color); font-weight: bold; color: var(--primary-color);">
+            已上架內容</div>
+        <div class="tab-item" onclick="switchTab('unpublished')"
+            style="padding: 10px 20px; cursor: pointer; color: #666;">已下架內容</div>
+        <div class="tab-item" onclick="switchTab('history')" style="padding: 10px 20px; cursor: pointer; color: #666;">
+            申請紀錄</div>
+    </div>
+
+    <!-- Published Listings -->
+    <div id="published" class="tab-content">
+        {% if published %}
+        {% for listing in published %}
+        <div
+            style="display: flex; gap: 20px; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}" target="_blank">
+                <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+                    style="width: 120px; height: 90px; object-fit: cover; border-radius: 4px; cursor: pointer;">
+            </a>
+            <div style="flex: 1;">
+                <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">
+                    <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}" target="_blank"
+                        style="text-decoration: none; color: inherit; cursor: pointer;">
+                        {{ listing['pet_name'] or '未命名寵物' }}
+                    </a>
+                </div>
+                <div style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">
+                    {{ listing['pet_type']|replace('dog', '狗')|replace('cat', '貓') }} - {{ listing['breed'] }}
+                </div>
+                <div style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">價格: ${{ listing['price'] }}/hr</div>
+                <div style="color: #888; font-size: 0.85rem;">上架時間: {{ listing['created_at'].split(' ')[0] }}</div>
+            </div>
+            <div style="display: flex; flex-direction: column; justify-content: center; gap: 5px;">
+                <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-primary"
+                    style="padding: 5px 15px; font-size: 0.9rem;">查看詳情</a>
+                <form action="{{ url_for('trainer_close_listing', listing_id=listing['id']) }}" method="post">
+                    <button type="submit" class="btn btn-outline"
+                        style="color: #dc2626; border-color: #dc2626; padding: 5px 15px; width: 100%;">下架</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p style="text-align: center; color: #888; padding: 20px;">目前沒有已上架的內容。</p>
+        {% endif %}
+    </div>
+
+    <!-- Unpublished Listings -->
+    <div id="unpublished" class="tab-content" style="display: none;">
+        {% if unpublished %}
+        {% for listing in unpublished %}
+        <div
+            style="display: flex; gap: 20px; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 15px; background-color: #f9f9f9;">
+            <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+                style="width: 120px; height: 90px; object-fit: cover; border-radius: 4px; opacity: 0.7;">
+            <div style="flex: 1;">
+                <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px; color: #666;">
+                    {{ listing['pet_name'] or '未命名寵物' }} (已下架)
+                </div>
+                <div style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">
+                    {{ listing['pet_type']|replace('dog', '狗')|replace('cat', '貓') }} - {{ listing['breed'] }}
+                </div>
+                <div style="color: #666; font-size: 0.9rem;">價格: ${{ listing['price'] }}/hr</div>
+            </div>
+            <div style="display: flex; flex-direction: column; justify-content: center; gap: 5px;">
+                <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-primary"
+                    style="padding: 5px 15px; font-size: 0.9rem;">查看詳情</a>
+                <form action="{{ url_for('trainer_republish_listing', listing_id=listing['id']) }}" method="post">
+                    <button type="submit" class="btn btn-outline" style="padding: 5px 15px; width: 100%;">重新上架</button>
+                </form>
+                <form action="{{ url_for('trainer_delete_listing', listing_id=listing['id']) }}" method="post"
+                    onsubmit="return confirm('確定要永久刪除此刊登內容嗎？此動作無法復原。');">
+                    <button type="submit" class="btn btn-outline"
+                        style="color: #dc2626; border-color: #dc2626; padding: 5px 15px; width: 100%;">刪除</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p style="text-align: center; color: #888; padding: 20px;">目前沒有已下架的內容。</p>
+        {% endif %}
+    </div>
+
+    <!-- History -->
+    <div id="history" class="tab-content" style="display: none;">
+
+        <h4 style="margin-bottom: 15px; color: #444;">待審核</h4>
+        {% if history_pending %}
+        {% for listing in history_pending %}
+        <div
+            style="border-left: 4px solid #f59e0b; padding-left: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-weight: bold;">{{ listing['pet_name'] or '未命名寵物' }}</div>
+                <div style="font-size: 0.9rem; color: #666;">{{ listing['pet_type']|replace('dog', '犬')|replace('cat',
+                    '貓') }} - {{
+                    listing['breed'] }}</div>
+                <div style="font-size: 0.9rem; color: #888;">申請時間: {{ listing['created_at'] }}</div>
+                <div style="color: #f59e0b; font-size: 0.9rem;">
+                    {% if listing['status'] == 'modification_pending' %}修改審核中...{% else %}審核中...{% endif %}
+                </div>
+            </div>
+            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+                style="padding: 5px 10px; font-size: 0.8rem;">查看詳情</a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p style="color: #888; margin-bottom: 20px; font-size: 0.9rem;">無待審核項目</p>
+        {% endif %}
+
+        <h4 style="margin-bottom: 15px; color: #444; border-top: 1px solid #eee; padding-top: 20px;">已通過審核</h4>
+        {% if history_approved %}
+        {% for listing in history_approved %}
+        <div
+            style="border-left: 4px solid #10b981; padding-left: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-weight: bold;">{{ listing['pet_name'] or '未命名寵物' }}</div>
+                <div style="font-size: 0.9rem; color: #666;">{{ listing['pet_type']|replace('dog', '犬')|replace('cat',
+                    '貓') }} - {{
+                    listing['breed'] }}</div>
+                <div style="font-size: 0.9rem; color: #888;">申請時間: {{ listing['created_at'] }}</div>
+                <div style="color: #10b981; font-size: 0.9rem;">已通過</div>
+            </div>
+            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+                style="padding: 5px 10px; font-size: 0.8rem;">查看詳情</a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p style="color: #888; margin-bottom: 20px; font-size: 0.9rem;">無通過記錄</p>
+        {% endif %}
+
+        <h4 style="margin-bottom: 15px; color: #444; border-top: 1px solid #eee; padding-top: 20px;">已駁回</h4>
+        {% if history_rejected %}
+        {% for listing in history_rejected %}
+        <div
+            style="border-left: 4px solid #dc2626; padding-left: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-weight: bold;">{{ listing['pet_name'] or '未命名寵物' }}</div>
+                <div style="font-size: 0.9rem; color: #666;">{{ listing['pet_type']|replace('dog', '犬')|replace('cat',
+                    '貓') }} - {{
+                    listing['breed'] }}</div>
+                <div style="font-size: 0.9rem; color: #888;">申請時間: {{ listing['created_at'] }}</div>
+                <div style="color: #dc2626; font-size: 0.9rem;">已駁回</div>
+            </div>
+            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+                style="padding: 5px 10px; font-size: 0.8rem;">查看詳情</a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p style="color: #888; margin-bottom: 20px; font-size: 0.9rem;">無駁回記錄</p>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+    function switchTab(tabId) {
+        // Hide all contents
+        document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+        // Remove active class from all tabs
+        document.querySelectorAll('.tab-item').forEach(el => {
+            el.classList.remove('active');
+            el.style.borderBottom = 'none';
+            el.style.color = '#666';
+        });
+
+        // Show selected content
+        document.getElementById(tabId).style.display = 'block';
+
+        // Highlight active tab
+        const activeTab = document.querySelector(`.tab-item[onclick="switchTab('${tabId}')"]`);
+        activeTab.classList.add('active');
+        activeTab.style.borderBottom = '3px solid var(--primary-color)';
+        activeTab.style.color = 'var(--primary-color)';
+    }
+</script>
+{% endblock %}

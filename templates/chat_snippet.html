@@ -1,0 +1,654 @@
+<!-- Floating Chat Button & Window (Global) -->
+{% if session.get('user_id') %}
+<div id="floating-chat-container">
+    <button id="floating-chat-btn" onclick="toggleChatWindow()">
+        <i class="fas fa-comments"></i>
+        <span id="chat-notification-dot" class="notification-dot" style="display: none;"></span>
+    </button>
+
+    <div id="floating-chat-window" class="hidden">
+        <div class="chat-window-header">
+            <button id="back-to-contacts-btn" class="icon-btn hidden" onclick="showContactList()">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h4 id="floating-chat-title">聊天室</h4>
+
+            {% if session.get('user_role') == 'trainer' %}
+            <button id="block-user-btn" class="icon-btn hidden" onclick="blockCurrentChatUser()" title="加入黑名單"
+                style="margin-right: 5px;">
+                <i class="fas fa-ban" style="color: #ef4444;"></i>
+            </button>
+            {% endif %}
+
+            <button class="icon-btn close-window-btn" onclick="toggleChatWindow()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Contact List View -->
+        <div id="contact-list-view">
+            <div id="contact-list" class="contact-list">
+                <!-- Contacts will be loaded here -->
+                <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> 載入中...</div>
+            </div>
+        </div>
+
+        <!-- Chat Room View -->
+        <div id="chat-room-view" class="hidden">
+            <div id="floating-chat-messages" class="chat-messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="floating-chat-input" placeholder="輸入訊息..."
+                    onkeypress="handleFloatingInput(event)">
+                <button class="send-btn-small" onclick="sendFloatingMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Floating Chat Styles */
+    #floating-chat-container {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        z-index: 9999;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    #floating-chat-btn {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--primary-color, #2563eb), #1d4ed8);
+        color: white;
+        border: none;
+        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    #floating-chat-btn:hover {
+        transform: scale(1.1);
+    }
+
+    .notification-dot {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 12px;
+        height: 12px;
+        background-color: #ef4444;
+        border-radius: 50%;
+        border: 2px solid white;
+    }
+
+    #floating-chat-window {
+        position: absolute;
+        bottom: 80px;
+        right: 0;
+        width: 350px;
+        height: 500px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        transform-origin: bottom right;
+    }
+
+    #floating-chat-window.hidden {
+        opacity: 0;
+        transform: translateY(20px) scale(0.9);
+        pointer-events: none;
+    }
+
+    .chat-window-header {
+        padding: 15px;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .chat-window-header h4 {
+        margin: 0;
+        font-size: 1rem;
+        color: #1e293b;
+        font-weight: 600;
+        flex: 1;
+        text-align: center;
+    }
+
+    .icon-btn {
+        background: none;
+        border: none;
+        color: #64748b;
+        cursor: pointer;
+        padding: 5px;
+        font-size: 1rem;
+        transition: color 0.2s;
+    }
+
+    .icon-btn:hover {
+        color: #0f172a;
+    }
+
+    .icon-btn.hidden {
+        visibility: hidden;
+    }
+
+    /* Contact List */
+    .contact-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+    }
+
+    .contact-item {
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background 0.2s;
+        gap: 12px;
+    }
+
+    .contact-item:hover {
+        background-color: #f1f5f9;
+    }
+
+    .contact-avatar img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .contact-avatar-placeholder {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #e2e8f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-size: 1.2rem;
+    }
+
+    .contact-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .contact-name {
+        font-weight: 600;
+        color: #334155;
+        font-size: 0.95rem;
+        margin-bottom: 2px;
+    }
+
+    .contact-last-msg {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .contact-meta {
+        text-align: right;
+    }
+
+    .contact-time {
+        font-size: 0.7rem;
+        color: #cbd5e1;
+    }
+
+    /* Chat Room */
+    #chat-room-view,
+    #contact-list-view {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    #chat-room-view.hidden,
+    #contact-list-view.hidden {
+        display: none;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px;
+        background-color: #f8fafc;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .chat-input-area {
+        padding: 12px;
+        background: white;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        gap: 10px;
+    }
+
+    #floating-chat-input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 20px;
+        outline: none;
+        font-size: 0.9rem;
+    }
+
+    #floating-chat-input:focus {
+        border-color: var(--primary-color, #2563eb);
+    }
+
+    .send-btn-small {
+        background: var(--primary-color, #2563eb);
+        color: white;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .loading-spinner {
+        text-align: center;
+        padding: 20px;
+        color: #94a3b8;
+    }
+
+    .f-msg-wrapper {
+        display: flex;
+        flex-direction: column;
+        max-width: 85%;
+    }
+
+    .f-msg-wrapper.sent {
+        align-self: flex-end;
+        align-items: flex-end;
+    }
+
+    .f-msg-wrapper.received {
+        align-self: flex-start;
+        align-items: flex-start;
+    }
+
+    .f-msg-bubble {
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        word-wrap: break-word;
+    }
+
+    .f-msg-wrapper.sent .f-msg-bubble {
+        background: var(--primary-color, #2563eb);
+        color: white;
+        border-bottom-right-radius: 2px;
+    }
+
+    .f-msg-wrapper.received .f-msg-bubble {
+        background: white;
+        border: 1px solid #e2e8f0;
+        color: #334155;
+        border-bottom-left-radius: 2px;
+    }
+
+    .f-msg-time {
+        font-size: 0.65rem;
+        color: #cbd5e1;
+        margin-top: 2px;
+    }
+
+    .contact-unread-badge {
+        background-color: #ef4444;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-top: 6px;
+    }
+
+    /* Custom Scrollbar */
+    .chat-messages,
+    .contact-list {
+        /* Firefox */
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar,
+    .contact-list::-webkit-scrollbar {
+        width: 8px;
+        /* Slightly wider */
+    }
+
+    .chat-messages::-webkit-scrollbar-track,
+    .contact-list::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.05);
+        /* Slight track color */
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb,
+    .contact-list::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        /* Darker default */
+        border-radius: 4px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb:hover,
+    .contact-list::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+        /* Even darker on hover */
+    }
+</style>
+
+<script>
+    let isChatOpen = false;
+    let currentChatOrderId = null;
+    let floatingChatInterval = null;
+    let currentChatUserId = null;
+
+    function toggleChatWindow() {
+        const windowEl = document.getElementById('floating-chat-window');
+        isChatOpen = !isChatOpen;
+
+        if (isChatOpen) {
+            windowEl.classList.remove('hidden');
+            if (!currentChatOrderId) {
+                loadContacts();
+            }
+        } else {
+            windowEl.classList.add('hidden');
+            if (floatingChatInterval) clearInterval(floatingChatInterval);
+        }
+    }
+
+    function showContactList() {
+        document.getElementById('contact-list-view').classList.remove('hidden');
+        document.getElementById('chat-room-view').classList.add('hidden');
+        document.getElementById('floating-chat-title').textContent = '聊天室';
+        document.getElementById('back-to-contacts-btn').classList.add('hidden');
+
+        const blockBtn = document.getElementById('block-user-btn');
+        if (blockBtn) blockBtn.classList.add('hidden');
+
+        currentChatOrderId = null;
+        if (floatingChatInterval) clearInterval(floatingChatInterval);
+        loadContacts();
+    }
+
+    function loadContacts() {
+        const listEl = document.getElementById('contact-list');
+
+        fetch('/api/chat/contacts')
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) return;
+
+                if (data.contacts.length === 0) {
+                    listEl.innerHTML = '<div class="loading-spinner">尚無聯絡人</div>';
+                    return;
+                }
+
+                let html = '';
+                data.contacts.forEach(c => {
+                    const avatarHtml = c.avatar
+                        ? `<div class="contact-avatar"><img src="/uploads/${c.avatar}" alt="${c.name}"></div>`
+                        : `<div class="contact-avatar-placeholder">${c.name.charAt(0)}</div>`;
+
+                    const badgeHtml = c.unread_count > 0
+                        ? `<span class="contact-unread-badge"></span>`
+                        : '';
+
+                    html += `
+                    <div class="contact-item" onclick="openFloatingChat(${c.last_order_id}, '${c.name}', ${c.user_id})">
+                        ${avatarHtml}
+                        <div class="contact-info">
+                            <div class="contact-name">${c.name}</div>
+                            <div class="contact-last-msg">${c.last_message || '尚無訊息'}</div>
+                        </div>
+                        <div class="contact-meta">
+                            <div class="contact-time">${c.last_message_time ? formatFloatingTime(c.last_message_time) : ''}</div>
+                            ${badgeHtml}
+                        </div>
+                    </div>
+                `;
+                });
+                listEl.innerHTML = html;
+            });
+    }
+
+    let currentChatPartnerId = null;
+
+    function openFloatingChat(orderId, name, partnerId = null) {
+        currentChatOrderId = orderId;
+        currentChatPartnerId = partnerId; // Store for blocking
+
+        document.getElementById('contact-list-view').classList.add('hidden');
+        document.getElementById('chat-room-view').classList.remove('hidden');
+        document.getElementById('floating-chat-title').textContent = name;
+        document.getElementById('back-to-contacts-btn').classList.remove('hidden');
+
+        const blockBtn = document.getElementById('block-user-btn');
+        if (blockBtn) blockBtn.classList.remove('hidden');
+
+        loadFloatingMessages();
+        if (floatingChatInterval) clearInterval(floatingChatInterval);
+        floatingChatInterval = setInterval(loadFloatingMessages, 3000);
+    }
+
+    function blockCurrentChatUser() {
+        // We need the ID of the user we are talking to.
+        // Currently `openFloatingChat` doesn't pass the User ID, only Order ID.
+        // But `loadContacts` has the User ID from API.
+        // Let's modify `openFloatingChat` to accept userId.
+
+        if (!currentChatPartnerId) {
+            alert('無法識別使用者');
+            return;
+        }
+
+        if (!confirm('確定要將此用戶加入黑名單嗎？')) return;
+
+        fetch('/api/blacklist/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ consumer_id: currentChatPartnerId })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('已加入黑名單');
+                    toggleChatWindow(); // Close window
+                } else {
+                    alert('失敗: ' + (data.error || 'Unknown'));
+                }
+            });
+    }
+
+    function loadFloatingMessages() {
+        if (!currentChatOrderId) return;
+
+        const container = document.getElementById('floating-chat-messages');
+
+        fetch(`/api/order/${currentChatOrderId}/messages`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) return;
+                currentChatUserId = data.current_user_id;
+
+                // Identify the other user from the first message sent by someone else
+                // OR better, API should return participants. 
+                // For now, let's look at the messages. 
+                // Wait, floating chat lists contacts with IDs.
+                // When opening chat, we pass orderId. We might not know user ID directly.
+                // But wait, the API returns messages sender_id. The other guy is the contact.
+                // Improvements: `loadContacts` sets up `openFloatingChat` with name only.
+                // We need to trace user ID. 
+
+                let html = '';
+                if (data.messages.length === 0) {
+                    html = '<div class="loading-spinner">開始對話吧！</div>';
+                } else {
+                    data.messages.forEach(msg => {
+                        const isMe = msg.sender_id === currentChatUserId;
+                        const timeStr = formatFloatingTime(msg.created_at);
+
+                        html += `
+                        <div class="f-msg-wrapper ${isMe ? 'sent' : 'received'}">
+                            <div class="f-msg-bubble">${msg.message}</div>
+                            <div class="f-msg-time">${timeStr}</div>
+                        </div>
+                    `;
+                    });
+                }
+
+                const lastMsg = container.lastElementChild;
+                const shouldScroll = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+
+                container.innerHTML = html;
+
+                if (shouldScroll) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            });
+    }
+
+    function sendFloatingMessage() {
+        const input = document.getElementById('floating-chat-input');
+        const msg = input.value.trim();
+        if (!msg || !currentChatOrderId) return;
+
+        input.value = '';
+
+        const container = document.getElementById('floating-chat-messages');
+        const timeStr = formatFloatingTime(new Date());
+        container.insertAdjacentHTML('beforeend', `
+        <div class="f-msg-wrapper sent" style="opacity: 0.7">
+            <div class="f-msg-bubble">${msg}</div>
+            <div class="f-msg-time">${timeStr}</div>
+        </div>
+    `);
+        container.scrollTop = container.scrollHeight;
+
+        fetch(`/api/order/${currentChatOrderId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    loadFloatingMessages();
+                } else if (data.error) {
+                    alert(data.error);
+                    loadFloatingMessages(); // Refresh to remove the optimistic message
+                }
+            });
+    }
+
+    function handleFloatingInput(e) {
+        if (e.key === 'Enter') sendFloatingMessage();
+    }
+
+    function formatFloatingTime(dateInput) {
+        const date = new Date(dateInput);
+        const now = new Date();
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+
+        const timeStr = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+
+        if (isToday) return timeStr;
+        return (date.getMonth() + 1) + '/' + date.getDate() + ' ' + timeStr;
+    }
+
+    window.openFloatingChatFromExternal = function (orderId, name, partnerId = null) {
+        const windowEl = document.getElementById('floating-chat-window');
+        isChatOpen = true;
+        windowEl.classList.remove('hidden');
+        openFloatingChat(orderId, name, partnerId);
+    }
+
+    // Open chat context by Trainer ID (for Product Page)
+    window.openChatWithTrainer = function (trainerId, trainerName, listingId) {
+        // Check if logged in
+        {% if not session.get('user_id') %}
+        // If not logged in, redirect to login page with return
+        window.location.href = "{{ url_for('login') }}?next=" + encodeURIComponent(window.location.pathname);
+        return;
+        {% endif %}
+
+        // Fetch context
+        let url = `/api/chat/context?user_id=${trainerId}`;
+        if (listingId) {
+            url += `&listing_id=${listingId}`;
+        }
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (data.order_id) {
+                    window.openFloatingChatFromExternal(data.order_id, trainerName);
+                } else {
+                    // This should rarely happen now as we auto-create inquiry orders
+                    alert('無法開啟聊天，請稍後再試。');
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching chat context:', err);
+                alert('系統錯誤，無法開啟聊天。');
+            });
+    }
+
+    // Unread Count Polling
+    function updateUnreadCount() {
+        if (isChatOpen) return; // Optional: pause when chat is open? No, good to see red dot if new msg comes in other chat? Maybe not needed if open.
+
+        fetch('/api/chat/unread_count')
+            .then(res => res.json())
+            .then(data => {
+                const dot = document.getElementById('chat-notification-dot');
+                if (data.count && data.count > 0) {
+                    // dot.textContent = data.count > 99 ? '99+' : data.count; // User requested no number
+                    dot.style.display = 'block';
+                } else {
+                    dot.style.display = 'none';
+                }
+            })
+            .catch(e => console.error('Error fetching unread count', e));
+    }
+
+    // Poll every 10 seconds
+    setInterval(updateUnreadCount, 10000);
+    // Initial call
+    updateUnreadCount();
+
+</script>
+{% endif %}

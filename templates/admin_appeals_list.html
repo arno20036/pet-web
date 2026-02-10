@@ -1,0 +1,102 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-exclamation-triangle"></i> 申訴案件管理</h2>
+</div>
+
+{% if appeals %}
+<div style="display: flex; flex-direction: column; gap: 15px;">
+    {% for appeal in appeals %}
+    {% set border_color = '#6c757d' %} {# Default Gray #}
+    {% set status_text = '未知狀態' %}
+    {% set badge_bg = '#f3f4f6' %}
+    {% set badge_color = '#374151' %}
+
+    {% if appeal.status == 'pending' %}
+    {% set border_color = '#f59e0b' %} {# Warning/Orange #}
+    {% set status_text = '待處理' %}
+    {% set badge_bg = '#fef3c7' %}
+    {% set badge_color = '#92400e' %}
+    {% elif appeal.status == 'processing' %}
+    {% set border_color = '#3b82f6' %} {# Info/Blue #}
+    {% set status_text = '處理中' %}
+    {% set badge_bg = '#dbeafe' %}
+    {% set badge_color = '#1e40af' %}
+    {% elif appeal.status == 'resolved' %}
+    {% set border_color = '#10b981' %} {# Success/Green #}
+    {% set status_text = '已解決' %}
+    {% set badge_bg = '#d1fae5' %}
+    {% set badge_color = '#065f46' %}
+    {% elif appeal.status == 'closed' %}
+    {% set border_color = '#6b7280' %} {# Secondary/Gray #}
+    {% set status_text = '已結案' %}
+    {% set badge_bg = '#f3f4f6' %}
+    {% set badge_color = '#1f2937' %}
+    {% endif %}
+
+    <div class="card shadow-sm border-0"
+        style="border-left: 5px solid {{ border_color }} !important; border-radius: 8px; overflow: visible;">
+        <div class="card-body p-4">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                <div>
+                    <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                        <span class="fw-bold text-secondary me-2">#{{ appeal.id }}</span>
+                        <h5 class="card-title fw-bold mb-0 text-dark">
+                            {% if appeal.reason == 'trainer_absent' %}訓練師未出席
+                            {% elif appeal.reason == 'service_quality' %}服務品質不佳
+                            {% elif appeal.reason == 'refund_request' %}退款申請
+                            {% elif appeal.reason == 'accident' %}發生意外/事故
+                            {% elif appeal.reason == 'other' %}其他問題
+                            {% else %}{{ appeal.reason }}
+                            {% endif %}
+                        </h5>
+                    </div>
+                    <div class="text-muted small">
+                        <i class="far fa-clock me-1"></i> {{ appeal.created_at | utc8 }}
+                        <span class="mx-2">|</span>
+                        <i class="far fa-user me-1"></i> {{ appeal.user_name }}
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <span class="badge rounded-pill"
+                        style="background-color: {{ badge_bg }}; color: {{ badge_color }}; font-size: 0.9rem; padding: 0.5em 1em; display: inline-block;">
+                        {{ status_text }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="p-3 bg-light rounded-3 mb-3 border">
+                <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                    <i class="fas fa-file-invoice text-primary me-2"></i>
+                    <span class="fw-bold text-dark">關聯訂單 #{{ appeal.order_id }}</span>
+                </div>
+                <div class="small text-muted mb-0">
+                    預約時間：{{ appeal.booking_date }}
+                </div>
+            </div>
+
+            <div
+                style="display: flex; justify-content: flex-end; border-top: 1px solid #dee2e6; padding-top: 15px; margin-top: 10px;">
+                <a href="{{ url_for('admin_appeal_detail', appeal_id=appeal.id) }}"
+                    class="btn btn-outline-primary rounded-pill px-4">
+                    查看詳情 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card border-0 shadow-sm" style="border-radius: 12px;">
+    <div class="card-body py-5 text-center">
+        <div
+            style="background-color: #f3f4f6; width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;">
+            <i class="fas fa-clipboard-check fa-2x text-secondary"></i>
+        </div>
+        <h5 class="fw-bold text-secondary mb-1">暫無申訴案件</h5>
+        <p class="mb-0 text-muted small">目前沒有需要處理的申訴紀錄</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

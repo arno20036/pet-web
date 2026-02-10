@@ -1,0 +1,127 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>會員詳細資料 - {{ user['name'] }}</h2>
+<div class="card">
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('admin_member_management') }}"
+            style="color: var(--text-muted); text-decoration: none;">&larr; 返回列表</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">基本資料</h3>
+            <div class="form-group">
+                <label>會員 ID</label>
+                <p>{{ user['id'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>身分</label>
+                <p>
+                    {% if user['role'] == 'admin' %}管理員
+                    {% elif user['role'] == 'trainer' %}訓練師
+                    {% else %}一般會員{% endif %}
+                </p>
+            </div>
+            <div class="form-group">
+                <label>姓名</label>
+                <p>{{ user['name'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>暱稱</label>
+                <p>{{ user['nickname'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>性別</label>
+                <p>{{ '男' if user['gender'] == 'male' else '女' }}</p>
+            </div>
+            <div class="form-group">
+                <label>出生年月日</label>
+                <p>{{ user['dob'] }}</p>
+            </div>
+        </div>
+
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">聯絡資訊</h3>
+            <div class="form-group">
+                <label>電子信箱 (帳號)</label>
+                <p>{{ user['email'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>聯絡電話</label>
+                <p>{{ user['phone'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>居住城市</label>
+                <p>{{ user['city'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>居住區域</label>
+                <p>{{ user['district'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>註冊時間</label>
+                <p>{{ user['created_at'] }}</p>
+            </div>
+        </div>
+    </div>
+
+    {% if user['role'] == 'trainer' %}
+    <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px; margin-bottom: 15px;">評價等級變更紀錄
+    </h3>
+
+    {% if level_history %}
+    <div style="overflow-x: auto; max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 500px;">
+            <thead style="background-color: #f9fafb; position: sticky; top: 0; z-index: 1;">
+                <tr>
+                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eee;">變更時間</th>
+                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eee;">原等級</th>
+                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eee;">新等級</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in level_history %}
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 10px;">{{ log.created_at|utc8 }}</td>
+                    <td style="padding: 10px;">
+                        {% if log.old_level == 'professional' %}
+                        <span style="color: #ea580c; font-weight: 500;">專業</span>
+                        {% elif log.old_level == 'advanced' %}
+                        <span style="color: #2563eb; font-weight: 500;">高級</span>
+                        {% else %}
+                        <span style="color: #64748b;">一般</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 10px;">
+                        {% if log.new_level == 'professional' %}
+                        <span style="color: #ea580c; font-weight: 500;">專業</span>
+                        {% elif log.new_level == 'advanced' %}
+                        <span style="color: #2563eb; font-weight: 500;">高級</span>
+                        {% else %}
+                        <span style="color: #64748b;">一般</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="padding: 20px; background: #f9f9f9; border-radius: 8px; color: #666; text-align: center;">
+        尚無變更紀錄
+    </div>
+    {% endif %}
+    {% endif %}
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+
+    <div style="display: flex; gap: 10px;">
+        <a href="{{ url_for('admin_member_edit', user_id=user['id']) }}" class="btn btn-primary">修改會員資料</a>
+
+        <form action="{{ url_for('admin_member_delete', user_id=user['id']) }}" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;"
+                onclick="return confirm('確定要刪除此會員？此動作無法復原。')">刪除會員</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

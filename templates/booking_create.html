@@ -1,0 +1,247 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <h2 class="text-center mb-4">預約下訂</h2>
+
+            <div class="listing-summary mb-4" style="background: #f8fafc; padding: 20px; border-radius: 8px;">
+                <div style="display: flex; gap: 20px; align-items: start;">
+                    {% if listing.pet_image %}
+                    <img src="{{ url_for('uploaded_file', filename=listing.pet_image) }}" alt="Cover"
+                        style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
+                    {% endif %}
+                    <div>
+                        <h4 style="margin: 0 0 10px 0;">{{ listing.pet_name }} ({{ listing.pet_type }})</h4>
+                        <p style="margin: 0; color: #666;">訓練師: {{ listing.trainer_name }}</p>
+                        <p style="margin: 5px 0 0 0; font-weight: bold; color: var(--primary-color);">NT$ {{
+                            listing.price }} / 小時</p>
+                    </div>
+                </div>
+            </div>
+
+            <form method="post" class="needs-validation" novalidate onsubmit="return validateForm()">
+
+                <!-- 1. Date & Time -->
+                <div class="form-section mb-4">
+                    <h4 class="section-title">1. 選擇預約時間</h4>
+                    <p class="text-muted small">可預約時段: {{ listing.available_slots }}</p>
+                    <div class="row">
+                        <div class="col-md-6 form-group">
+                            <label for="booking_date">預約日期</label>
+                            <input type="date" id="booking_date" name="booking_date" class="form-control" required
+                                min="{{ today_date }}">
+                        </div>
+                        <div class="col-md-3 form-group">
+                            <label for="start_time">開始時間</label>
+                            <select id="start_time" name="start_time" class="form-control" required
+                                onchange="updateEndTimeOptions()">
+                                <option value="" disabled selected>請選擇</option>
+                                {% for h in range(min_hour, max_hour) %}
+                                <option value="{{ '%02d' % h }}:00">{{ '%02d' % h }}:00</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 form-group">
+                            <label for="end_time">結束時間</label>
+                            <select id="end_time" name="end_time" class="form-control" required onchange="calcTotal()">
+                                <option value="" disabled selected>請先選開始時間</option>
+                                <!-- Populated by JS -->
+                            </select>
+                        </div>
+                    </div>
+                    <div id="price_preview"
+                        style="background: #f0f9ff; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; color: var(--primary-color); font-weight: bold;">
+                        預計總額: $<span id="total_price_span">0</span> (共 <span id="duration_span">0</span> 小時)
+                    </div>
+                </div>
+
+                <!-- 2. Location -->
+                <div class="form-section mb-4">
+                    <h4 class="section-title">2. 選擇活動地點</h4>
+                    <div class="form-group">
+                        <label>地點類型</label>
+                        <div class="radio-group" style="display: flex; gap: 20px; margin-top: 10px;">
+                            <label class="radio-option">
+                                <input type="radio" name="location_type" value="home" required
+                                    onclick="toggleLocationDetail(this.value)">
+                                <span>到府</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="location_type" value="store" required
+                                    onclick="toggleLocationDetail(this.value)">
+                                <span>指定店家 (咖啡廳、餐廳)</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="location_type" value="public" required
+                                    onclick="toggleLocationDetail(this.value)">
+                                <span>指定公共區域 (公園)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="location_detail_group" class="form-group" style="display: none;">
+                        <label for="location_detail">詳細地點名稱/地址</label>
+                        <input type="text" id="location_detail" name="location_detail" class="form-control"
+                            placeholder="請輸入詳細地址或地點名稱">
+                    </div>
+                </div>
+
+                <!-- 3. Rules & Agreement -->
+                <div class="form-section mb-4">
+                    <h4 class="section-title">3. 相關規定與同意</h4>
+                    <div class="rules-box"
+                        style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background: #fff; height: 150px; overflow-y: auto; margin-bottom: 15px;">
+                        <h5>注意事項與規定：</h5>
+                        <p style="white-space: pre-line;">{{ listing.rules }}</p>
+                        <hr>
+                        <h5>取消政策：</h5>
+                        <p>於預約時間前 {{ listing.cancellation_hours }} 小時內取消，無法進行退費。</p>
+                        <hr>
+                        <h5>改期規定：</h5>
+                        <p style="color: #d97706; font-weight: bold;">每筆訂單僅限修改兩次。超過次數將無法再進行改期申請。</p>
+                        <hr>
+                        <h5>每月取消限制：</h5>
+                        <p style="color: #ef4444; font-weight: bold;">每位會員每月僅限取消兩筆訂單。當月累計取消次數達上限後，將無法再進行取消操作。</p>
+                    </div>
+
+                    <div class="form-check">
+                        <input type="checkbox" id="agree_rules" name="agree_rules" class="form-check-input" required>
+                        <label for="agree_rules" class="form-check-label">我已詳細閱讀並同意上述所有規定與條款</label>
+                    </div>
+                </div>
+
+                <!-- 4. Confirmation -->
+                <div class="text-center mt-4">
+                    <button type="button" class="btn btn-primary btn-lg btn-block"
+                        onclick="confirmBooking()">確認下訂</button>
+                    <button type="submit" id="realSubmitBtn" style="display: none;"></button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 15px;
+        border-left: 4px solid var(--primary-color);
+        padding-left: 10px;
+    }
+
+    .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+</style>
+
+<script>
+    const minHour = {{ min_hour }};
+    const maxHour = {{ max_hour }};
+    const hourlyPrice = {{ listing.price }};
+    const allowedWeekdays = {{ allowed_weekdays| tojson }}; // [1, 3] for Mon, Wed
+
+    // Validate Date on Change
+    document.getElementById('booking_date').addEventListener('change', function () {
+        const dateVal = this.value;
+        if (!dateVal) return;
+
+        const dateObj = new Date(dateVal);
+        const day = dateObj.getDay(); // 0=Sun, 1=Mon...
+
+        if (!allowedWeekdays.includes(day)) {
+            alert('該日期非開放預約日，請參考上方「可預約時段」');
+            this.value = ''; // Clear input
+        }
+    });
+
+    function updateEndTimeOptions() {
+        const startSelect = document.getElementById('start_time');
+        const endSelect = document.getElementById('end_time');
+        const selectedStart = parseInt(startSelect.value.split(':')[0]);
+
+        endSelect.innerHTML = '<option value="" disabled selected>請選擇</option>';
+
+        // Populate End Time (Start + 1 up to Max)
+        for (let h = selectedStart + 1; h <= maxHour; h++) {
+            const timeStr = (h < 10 ? '0' : '') + h + ':00';
+            const option = document.createElement('option');
+            option.value = timeStr;
+            option.textContent = timeStr;
+            endSelect.appendChild(option);
+        }
+        calcTotal(); // Reset or Recalc
+    }
+
+    function calcTotal() {
+        const startSelect = document.getElementById('start_time');
+        const endSelect = document.getElementById('end_time');
+        const previewDiv = document.getElementById('price_preview');
+
+        if (startSelect.value && endSelect.value) {
+            const startH = parseInt(startSelect.value.split(':')[0]);
+            const endH = parseInt(endSelect.value.split(':')[0]);
+            const duration = endH - startH;
+
+            if (duration > 0) {
+                document.getElementById('duration_span').textContent = duration;
+                document.getElementById('total_price_span').textContent = duration * hourlyPrice;
+                previewDiv.style.display = 'block';
+            } else {
+                previewDiv.style.display = 'none';
+            }
+        } else {
+            previewDiv.style.display = 'none';
+        }
+    }
+
+    function toggleLocationDetail(type) {
+        const detailGroup = document.getElementById('location_detail_group');
+        const detailInput = document.getElementById('location_detail');
+
+        if (type === 'home') {
+            detailGroup.style.display = 'block';
+            detailInput.placeholder = '請輸入您的詳細地址';
+            detailInput.required = true;
+        } else if (type === 'store') {
+            detailGroup.style.display = 'block';
+            detailInput.placeholder = '請輸入店家名稱與地址';
+            detailInput.required = true;
+        } else if (type === 'public') {
+            detailGroup.style.display = 'block';
+            detailInput.placeholder = '請輸入地點名稱 (如: 大安森林公園)';
+            detailInput.required = true;
+        } else {
+            detailGroup.style.display = 'none';
+            detailInput.required = false;
+        }
+    }
+
+    function validateForm() {
+        const agree = document.getElementById('agree_rules');
+        if (!agree.checked) {
+            alert('請勾選同意相關規定');
+            return false;
+        }
+        return true;
+    }
+
+    function confirmBooking() {
+        const form = document.querySelector('form');
+        if (form.checkValidity()) {
+            if (confirm('確定要送出這筆預約嗎？\n\n送出後需等待訓練師確認。\n確認後請至「會員中心 > 我的訂單」查看狀態。')) {
+                document.getElementById('realSubmitBtn').click();
+            }
+        } else {
+            form.reportValidity();
+        }
+    }
+</script>
+{% endblock %}

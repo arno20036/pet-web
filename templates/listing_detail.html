@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
+
+
+
+    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 40px;">
+        <!-- Left Column: Images -->
+        <div class="product-images">
+            <!-- Main Image -->
+            <div
+                style="border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                <img id="mainImage" src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+                    style="width: 100%; height: 500px; object-fit: cover;">
+            </div>
+            <!-- Thumbnails -->
+            {% if images %}
+            <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;">
+                <!-- Cover image as first thumb -->
+                <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}" onclick="changeImage(this.src)"
+                    style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid transparent; opacity: 0.8;"
+                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
+
+                {% for img in images %}
+                {% if img != listing['pet_image'] %}
+                <img src="{{ url_for('uploaded_file', filename=img) }}" onclick="changeImage(this.src)"
+                    style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid transparent; opacity: 0.8;"
+                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Right Column: Info & Booking -->
+        <div class="product-info">
+            {% if listing['status'] != 'approved' %}
+            <div class="alert alert-warning"
+                style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 8px; margin-bottom: 20px;">
+                <i class="fas fa-eye"></i> 預覽模式：此刊登尚未公開上架。
+            </div>
+            {% endif %}
+
+            <h1 style="font-size: 2.5rem; font-weight: bold; margin-bottom: 10px; color: #333;">{{ listing['pet_name']
+                or '未命名寵物' }}</h1>
+
+            <div
+                style="font-size: 1.2rem; color: #666; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                <span class="badge"
+                    style="background: #f3f4f6; color: #333; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">
+                    {{ listing['pet_type']|replace('dog', '狗')|replace('cat', '貓') }}
+                </span>
+                <span>{{ listing['breed'] }}</span>
+            </div>
+
+            <div class="price-section"
+                style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
+                <div style="font-size: 2rem; font-weight: 800; color: var(--primary-color);">
+                    ${{ listing['price'] }} <span style="font-size: 1rem; color: #666; font-weight: normal;">/ 小時</span>
+                </div>
+            </div>
+
+            <!-- Trainer Info Mini Card -->
+            <a href="{{ url_for('trainer_public_listings', trainer_id=listing['trainer_id']) }}"
+                style="text-decoration: none; color: inherit; display: block;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 30px; padding: 15px; background: #f9fafb; border-radius: 12px; transition: background-color 0.2s; border: 1px solid transparent;"
+                    onmouseover="this.style.borderColor='var(--primary-color)'; this.style.backgroundColor='#f0f9ff';"
+                    onmouseout="this.style.borderColor='transparent'; this.style.backgroundColor='#f9fafb';">
+                    <div
+                        style="width: 50px; height: 50px; border-radius: 50%; overflow: hidden; background: #e5e7eb; display: flex; align-items: center; justify-content: center;">
+                        {% if listing['trainer_avatar'] %}
+                        <img src="{{ url_for('uploaded_file', filename=listing['trainer_avatar']) }}"
+                            style="width: 100%; height: 100%; object-fit: cover;">
+                        {% else %}
+                        <span style="font-weight: bold; color: #666;">{{ listing['trainer_name'][0] }}</span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div style="font-weight: bold;">{{ listing['trainer_nickname'] or listing['trainer_name'] }}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #666;">專業寵物保姆 / 訓練師</div>
+                    </div>
+                    <div style="margin-left: auto; color: var(--primary-color);">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+            </a>
+
+            <button
+                onclick="openChatWithTrainer({{ listing['trainer_id'] }}, '{{ listing['trainer_name'] }}', {{ listing['id'] }})"
+                class="btn btn-outline"
+                style="width: 100%; margin-bottom: 30px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <i class="fas fa-comment-dots"></i> 聯絡訓練師
+            </button>
+
+            <!-- Booking Section -->
+            <div class="booking-card"
+                style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                <h3 style="margin-top: 0; font-size: 1.2rem; margin-bottom: 15px;">預約服務</h3>
+
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #666;">可預約時段</label>
+                    <div style="font-weight: 500;">{{ listing['available_slots'] }}</div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: #666;">取消時限</label>
+                    <div style="font-size: 0.9rem; color: #666;">{{ listing['cancellation_hours'] }} 小時前可進行行程取消</div>
+                </div>
+
+                {% if session.get('user_id') %}
+                {% if session.get('user_id') == listing['trainer_id'] %}
+                <a href="{{ url_for('trainer_listing_edit', listing_id=listing['id']) }}" class="btn btn-primary"
+                    style="width: 100%; display: block; text-align: center; padding: 12px;">編輯刊登</a>
+                {% else %}
+                <a href="{{ url_for('booking_create', listing_id=listing['id']) }}" class="btn btn-primary"
+                    style="width: 100%; display: block; text-align: center; padding: 12px; text-decoration: none; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">立即預約</a>
+                {% endif %}
+                {% else %}
+                <a href="{{ url_for('login') }}?next={{ request.path }}" class="btn btn-primary"
+                    style="width: 100%; display: block; text-align: center; padding: 12px;">登入以預約</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Tabs Section -->
+    <div style="margin-top: 60px;">
+        <div style="border-bottom: 2px solid #eee; margin-bottom: 30px;">
+            <h3
+                style="display: inline-block; border-bottom: 3px solid var(--primary-color); padding-bottom: 10px; margin-bottom: -2px; color: var(--primary-color);">
+                服務詳情</h3>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 40px;">
+            <div class="content">
+                <h4 style="font-weight: bold; margin-bottom: 15px;">關於 {{ listing['pet_name'] or '毛小孩' }}</h4>
+                <p style="white-space: pre-line; line-height: 1.8; color: #444; margin-bottom: 40px;">{{
+                    listing['introduction'] }}</p>
+
+                <h4 style="font-weight: bold; margin-bottom: 15px;">相關規定</h4>
+                <div
+                    style="background: #f9f9f9; padding: 20px; border-radius: 12px; border-left: 4px solid var(--primary-color);">
+                    <p style="white-space: pre-line; margin: 0; color: #555;">{{ listing['rules'] or '無特殊規定' }}</p>
+                </div>
+            </div>
+
+            <!-- Reviews Section -->
+            <div style="margin-top: 50px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                    <h4 style="font-weight: bold; margin: 0;">過去評價</h4>
+                    {% if average_rating > 0 %}
+                    <div
+                        style="background: #fbbf24; color: white; padding: 2px 8px; border-radius: 6px; font-weight: bold; font-size: 0.9rem;">
+                        ★ {{ average_rating }}
+                    </div>
+                    {% endif %}
+                    <span style="color: #666; font-size: 0.9rem;">({{ reviews|length }} 則評論)</span>
+                </div>
+
+                {% if reviews %}
+                <div style="max-height: 400px; overflow-y: auto; padding-right: 15px;">
+                    {% for review in reviews %}
+                    <div style="border-bottom: 1px solid #eee; padding: 20px 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                {% if review.reviewer_avatar %}
+                                <img src="{{ url_for('uploaded_file', filename=review.reviewer_avatar) }}"
+                                    style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover;">
+                                {% else %}
+                                <div
+                                    style="width: 30px; height: 30px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-user" style="font-size: 0.8rem; color: #666;"></i>
+                                </div>
+                                {% endif %}
+                                {% set name = review.reviewer_nickname or review.reviewer_name %}
+                                <span style="font-weight: 500;">{{ name[0] }}****</span>
+                            </div>
+                            <span style="color: #888; font-size: 0.85rem;">{{ review.created_at|utc8 }}</span>
+                        </div>
+                        <div style="color: #fbbf24; margin-bottom: 5px;">
+                            {% for i in range(review.rating) %}★{% endfor %}
+                            {% for i in range(5 - review.rating) %}☆{% endfor %}
+                        </div>
+                        <p style="color: #555; margin: 0; line-height: 1.5;">{{ review.comment }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div style="text-align: center; padding: 30px; background: #f9f9f9; border-radius: 12px; color: #888;">
+                    尚無評價
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Sidebar for Recommendations or Reviews could go here -->
+        <div>
+            <!-- Placeholder for future content -->
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+    function changeImage(src) {
+        document.getElementById('mainImage').src = src;
+    }
+</script>
+{% endblock %}

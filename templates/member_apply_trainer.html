@@ -1,0 +1,40 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>申請訓練師資格</h2>
+<div class="card">
+    {% if application and application['status'] == 'pending' %}
+    <div style="text-align: center; padding: 40px 20px;">
+        <div style="font-size: 4rem; color: #f59e0b; margin-bottom: 20px;">⏳</div>
+        <h3>申請審核中</h3>
+        <p class="text-muted">我們正在審核您的訓練師資格申請，請耐心等候。</p>
+        <p>申請時間：{{ application['created_at'] | utc8 }}</p>
+    </div>
+    {% else %}
+
+
+    {% if application and application['status'] == 'rejected' %}
+    <div
+        style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ef4444;">
+        <h4 style="margin: 0 0 5px 0; color: #ef4444;">上次申請結果：未通過</h4>
+        <p style="margin: 0; font-size: 0.9rem; color: #666;">您的前一次申請未獲核准。歡迎補充資料後再次提出申請。</p>
+    </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="experience">實務經驗 (年)</label>
+            <input type="number" id="experience" name="experience" class="form-control" required min="0">
+        </div>
+
+        <div class="form-group">
+            <label for="certificate">上傳證照檔案</label>
+            <input type="file" id="certificate" name="certificate" class="form-control" required accept="image/*,.pdf">
+            <small class="text-muted">請上傳相關證照圖片或 PDF 檔</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary">申請</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

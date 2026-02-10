@@ -1,0 +1,505 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2><i class="fas fa-clipboard-list"></i> 查看訂單流程進度</h2>
+
+{% if orders %}
+<div style="margin-bottom: 20px; color: #666;">
+    <i class="fas fa-info-circle"></i> 共 {{ orders|length }} 筆訂單
+</div>
+
+<div class="orders-grid">
+    {% for order in orders %}
+    <div class="order-card" id="order-{{ order.id }}" onclick="toggleOrderDetails('details-{{ order.id }}')">
+        <div class="order-summary">
+            <div class="order-header">
+                <div>
+                    <strong style="font-size: 1.1rem;">#{{ order.id }}</strong>
+                    <span style="margin-left: 10px; color: #666;">{{ order.pet_name }}</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    {% if order.status == 'pending' %}
+                    <span class="status-badge status-pending">{{ order.status_text }}</span>
+                    {% elif order.status == 'confirmed' %}
+                    <span class="status-badge status-confirmed">{{ order.status_text }}</span>
+                    {% elif order.status == 'in_progress' %}
+                    <span class="status-badge status-progress">{{ order.status_text }}</span>
+                    {% elif order.status == 'completed' %}
+                    <span class="status-badge status-completed">{{ order.status_text }}</span>
+                    {% elif order.status == 'rejected' %}
+                    <span class="status-badge status-rejected">{{ order.status_text }}</span>
+                    {% elif order.status == 'cancelled' %}
+                    <span class="status-badge status-cancelled">{{ order.status_text }}</span>
+                    {% endif %}
+
+                    {% if order.payment_status == 'paid' %}
+                    <span class="payment-badge payment-paid"><i class="fas fa-check-circle"></i></span>
+                    {% else %}
+                    <span class="payment-badge payment-unpaid"><i class="fas fa-exclamation-circle"></i></span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="order-quick-info">
+                <div><i class="fas fa-user"></i> {{ order.buyer_name }} → {{ order.seller_name }}</div>
+                <div><i class="fas fa-calendar"></i> {{ order.booking_date }} {{ order.booking_time }}</div>
+                <div><i class="fas fa-dollar-sign"></i> ${{ order.total_price }}</div>
+                <div>
+                    <i class="fas fa-credit-card"></i>
+                    {% if order.payment_status == 'paid' %}
+                    {% if order.payment_confirmed == 1 %}
+                    <span style="color: #065f46; font-weight: 600;">✓ 已付款 (已確認收款)</span>
+                    {% else %}
+                    <span style="color: #d97706; font-weight: 600;">已付款 (待確認收款)</span>
+                    {% endif %}
+                    {% elif order.paid_amount and order.paid_amount > 0 %}
+                    {% if order.paid_amount > order.total_price %}
+                    <span style="color: #1e40af; font-weight: 600;"><i class="fas fa-undo"></i> 待退款 (需退${{
+                        order.paid_amount - order.total_price }})</span>
+                    {% else %}
+                    <span style="color: #ea580c; font-weight: 600;"><i class="fas fa-exclamation-triangle"></i> 待補款
+                        (已付${{ order.paid_amount }})</span>
+                    {% endif %}
+                    {% else %}
+                    <span style="color: #991b1b; font-weight: 600;">尚未完成付款</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="expand-hint">
+                <i class="fas fa-chevron-down"></i> 點擊查看詳情
+            </div>
+        </div>
+
+        <div class="order-details" id="details-{{ order.id }}" style="display: none;">
+            <div class="details-grid">
+                <div class="detail-section">
+                    <h4><i class="fas fa-user"></i> 消費者資訊</h4>
+                    <p><strong>姓名：</strong>{{ order.buyer_name }}</p>
+                    <p><strong>信箱：</strong>{{ order.buyer_email }}</p>
+                    <p><strong>電話：</strong>{{ order.buyer_phone }}</p>
+                </div>
+
+                <div class="detail-section">
+                    <h4><i class="fas fa-chalkboard-teacher"></i> 訓練師資訊</h4>
+                    <p><strong>姓名：</strong>{{ order.seller_name }}</p>
+                    <p><strong>信箱：</strong>{{ order.seller_email }}</p>
+                    <p><strong>電話：</strong>{{ order.seller_phone }}</p>
+                </div>
+
+                <div class="detail-section">
+                    <h4><i class="fas fa-paw"></i> 商品資訊</h4>
+                    <p><strong>寵物名稱：</strong>{{ order.pet_name }}</p>
+                    <p><strong>寵物類型：</strong>{{ order.pet_type }}</p>
+                    <p><strong>預約時間：</strong>{{ order.booking_date }} {{ order.booking_time }}</p>
+                    <p><strong>時長：</strong>{{ order.duration }} 小時</p>
+                </div>
+
+                <div class="detail-section">
+                    <h4><i class="fas fa-credit-card"></i> 付款資訊</h4>
+                    <p><strong>金額：</strong>${{ order.total_price }}</p>
+                    <p><strong>付款狀態：</strong>{{ order.payment_status_text }}</p>
+                    {% if order.payment_time %}
+                    <p><strong>付款時間：</strong>{{ order.payment_time }}</p>
+                    <p><strong>卡號：</strong>**** {{ order.card_last4 }}</p>
+                    {% endif %}
+                    {% if order.payment_status == 'paid' %}
+                    <p><strong>收款確認：</strong>
+                        {% if order.payment_confirmed == 1 %}
+                        <span style="color: #065f46;"><i class="fas fa-check-circle"></i> 已確認</span>
+                        {% else %}
+                        <span style="color: #991b1b;"><i class="fas fa-exclamation-circle"></i> 待確認</span>
+                        {% endif %}
+                    </p>
+                    {% if order.payment_deadline %}
+                    <p><strong>付款期限：</strong>{{ order.payment_deadline }}</p>
+                    {% endif %}
+                    {% if order.payment_confirmed == 0 %}
+                    <form method="post" action="{{ url_for('admin_confirm_payment', order_id=order.id) }}"
+                        style="margin-top: 10px;" onsubmit="return confirm('確定確認收款？此操作無法復原。');">
+                        <button type="submit" class="btn btn-primary btn-sm"
+                            style="background: var(--primary-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+                            <i class="fas fa-check"></i> 確認收款
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+
+
+                    {% if order.payment_status == 'paid' and order.status in ['cancelled', 'rejected'] %}
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee;">
+                        <button type="button" class="btn btn-warning btn-sm"
+                            onclick="event.stopPropagation(); openRefundModal({{ order.id }})"
+                            style="background: #f59e0b; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; width: 100%;">
+                            <i class="fas fa-undo"></i> 處理退款
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+                <div style="display: flex; align-items: flex-start; grid-column: 1 / -1;">
+                    <i class="fas fa-sticky-note" style="color: #94a3b8; margin-top: 3px; margin-right: 10px;"></i>
+                    <div style="flex: 1;">
+                        <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">訂單備註</div>
+                        <div
+                            style="color: #334155; background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; font-style: italic;">
+                            {{ order.notes or '無備註' }}
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+
+        <div class="order-footer"
+            style="padding: 12px 20px; border-top: 1px solid #eee; color: #666; font-size: 0.85rem; background: #fafafa;">
+            <i class="fas fa-clock"></i> 建立時間：{{ order.created_at }}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #888;">
+    <i class="fas fa-inbox" style="font-size: 4rem; color: #ddd; margin-bottom: 20px;"></i>
+    <p style="font-size: 1.1rem;">目前沒有任何訂單</p>
+</div>
+{% endif %}
+
+<style>
+    .orders-grid {
+        display: grid;
+        gap: 20px;
+    }
+
+    .order-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+    .order-card:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        transform: translateY(-2px);
+    }
+
+    .order-summary {
+        padding: 20px;
+    }
+
+    .order-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .order-quick-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+        color: #666;
+        font-size: 0.95rem;
+    }
+
+    .order-quick-info i {
+        margin-right: 8px;
+        color: var(--primary-color);
+    }
+
+    .expand-hint {
+        text-align: center;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px dashed #ddd;
+        color: #999;
+        font-size: 0.85rem;
+    }
+
+    .order-details {
+        padding: 0 20px 20px 20px;
+        background: #f9fafb;
+        animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            max-height: 0;
+        }
+
+        to {
+            opacity: 1;
+            max-height: 1000px;
+        }
+    }
+
+    .details-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-top: 15px;
+    }
+
+    .detail-section {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 3px solid var(--primary-color);
+    }
+
+    .detail-section h4 {
+        margin: 0 0 10px 0;
+        color: var(--primary-color);
+        font-size: 1rem;
+    }
+
+    .detail-section h4 i {
+        margin-right: 8px;
+    }
+
+    .detail-section p {
+        margin: 8px 0;
+        font-size: 0.9rem;
+        color: #374151;
+    }
+
+
+    .status-badge {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .status-pending {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .status-confirmed {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .status-progress {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .status-completed {
+        background: #e0e7ff;
+        color: #3730a3;
+    }
+
+    .status-rejected {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .status-cancelled {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .payment-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        font-size: 1rem;
+    }
+
+    .payment-paid {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .payment-unpaid {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .payment-refunded {
+        background: #fef3c7;
+        color: #92400e;
+    }
+</style>
+
+<script>
+    function toggleOrderDetails(orderId) {
+        const detailsDiv = document.getElementById(orderId);
+        const card = detailsDiv.parentElement;
+
+        if (detailsDiv.style.display === 'none') {
+            detailsDiv.style.display = 'block';
+            card.querySelector('.expand-hint i').classList.remove('fa-chevron-down');
+            card.querySelector('.expand-hint i').classList.add('fa-chevron-up');
+        } else {
+            detailsDiv.style.display = 'none';
+            card.querySelector('.expand-hint i').classList.remove('fa-chevron-up');
+            card.querySelector('.expand-hint i').classList.add('fa-chevron-down');
+        }
+    }
+
+    let currentRefundTaskId = null;
+
+    function openRefundModal(orderId) {
+        document.getElementById('refundModal').style.display = 'block';
+        document.getElementById('refund-loading').style.display = 'block';
+        document.getElementById('refund-content').style.display = 'none';
+
+        // Fetch Details
+        fetch(`/api/admin/refund-task/${orderId}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('refund-loading').style.display = 'none';
+                if (data.task) {
+                    currentRefundTaskId = data.task.id;
+                    document.getElementById('refund-content').style.display = 'block';
+                    document.getElementById('refund-amount').textContent = data.task.amount;
+                    document.getElementById('refund-reason').textContent = data.task.reason;
+                    // Status check?
+                    if (data.task.status === 'processed') {
+                        alert('此退款已處理完成');
+                        closeRefundModal();
+                    }
+                } else {
+                    alert(data.error || '無需退款或找不到退款任務');
+                    closeRefundModal();
+                }
+            })
+            .catch(err => {
+                alert('載入失敗');
+                closeRefundModal();
+            });
+    }
+
+    function closeRefundModal() {
+        document.getElementById('refundModal').style.display = 'none';
+        currentRefundTaskId = null;
+    }
+
+    function confirmRefund() {
+        if (!currentRefundTaskId) return;
+
+        // Requirement: Admin also needs secondary confirmation
+        if (!confirm('請再次確認：您已完成退款轉帳操作並要在系統中標記為「已退款」嗎？')) return;
+
+        fetch(`/api/admin/refund-task/${currentRefundTaskId}/process`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('退款已結案');
+                    location.reload();
+                } else {
+                    alert(data.error || '操作失敗');
+                }
+            });
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function (event) {
+        const modal = document.getElementById('refundModal');
+        if (event.target == modal) {
+            closeRefundModal();
+        }
+    }
+
+    // Auto-highlight order based on URL hash
+    document.addEventListener("DOMContentLoaded", function () {
+        if (window.location.hash) {
+            const targetId = window.location.hash.substring(1); // remove #
+            const targetElement = document.getElementById(targetId);
+            if (targetElement) {
+                // Add highlight class
+                targetElement.classList.add('highlight-target');
+                // Ensure it's open if it's the details (though logic above targets the card now)
+            }
+        }
+    });
+
+
+</script>
+
+<style>
+    @keyframes highlight {
+        0% {
+            background-color: #fef9c3;
+            box-shadow: 0 0 15px rgba(234, 179, 8, 0.5);
+            transform: scale(1.02);
+            border: 2px solid #eab308;
+        }
+
+        50% {
+            background-color: #fef9c3;
+            box-shadow: 0 0 15px rgba(234, 179, 8, 0.5);
+            border: 2px solid #eab308;
+        }
+
+        100% {
+            background-color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transform: scale(1);
+            border: none;
+        }
+    }
+
+    .highlight-target {
+        animation: highlight 2s ease-out forwards;
+        position: relative;
+        z-index: 10;
+    }
+</style>
+
+<!-- Refund Modal -->
+<div id="refundModal" class="modal"
+    style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+    <div class="modal-content"
+        style="background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 10px;">
+        <span onclick="closeRefundModal()"
+            style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+        <h3 style="margin-top: 0; color: #f59e0b;">退款處理</h3>
+
+        <div id="refund-loading" style="text-align: center; padding: 20px;">
+            <i class="fas fa-spinner fa-spin"></i> 載入退款資訊中...
+        </div>
+
+        <div id="refund-content" style="display: none;">
+            <div
+                style="background: #fffbeb; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #fcd34d;">
+                <p style="margin: 5px 0; font-size: 1.1rem;"><strong>退款金額:</strong> $<span id="refund-amount"></span>
+                </p>
+                <p style="margin: 5px 0;"><strong>退款原因/帳戶:</strong></p>
+                <p id="refund-reason"
+                    style="background: white; padding: 10px; border-radius: 4px; border: 1px solid #eee; margin-top: 5px; white-space: pre-wrap; word-break: break-all;">
+                </p>
+            </div>
+
+            <p style="color: #666; font-size: 0.9rem;">
+                <i class="fas fa-info-circle"></i> 請依照上述帳戶資訊進行轉帳，完成後點擊下方按鈕結案。
+            </p>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button class="btn" onclick="closeRefundModal()"
+                    style="padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: white; border-radius: 5px; margin-right: 10px;">取消</button>
+                <button class="btn btn-warning" onclick="confirmRefund()"
+                    style="padding: 8px 15px; cursor: pointer; background: #f59e0b; color: white; border: none; border-radius: 5px;">
+                    <i class="fas fa-check"></i> 確認已退款
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+{% endblock %}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}寵物陪伴刊登平台{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="{{ url_for('index') }}" class="logo">寵物陪伴刊登平台</a>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}" class="btn btn-ghost">首頁</a>
+                {% if session.get('user_id') %}
+                <a href="{{ url_for('member_profile') }}" class="btn btn-ghost">會員中心</a>
+                <span class="user-greeting">Hi, {{ session.get('user_name') }}</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline">登出</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="btn btn-ghost">登入</a>
+                <a href="{{ url_for('register') }}" class="btn btn-primary">註冊</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flashes">
+            {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+    <script>
+        // Auto-dismiss flash messages after 3 seconds
+        setTimeout(function () {
+            var flashes = document.querySelector('.flashes');
+            if (flashes) {
+                flashes.style.transition = 'opacity 0.5s ease-out';
+                flashes.style.opacity = '0';
+                setTimeout(function () {
+                    flashes.remove();
+                }, 500); // Wait for transition to finish
+            }
+        }, 3000);
+    </script>
+    {% include 'chat_snippet.html' %}
+</body>
+
+</html>

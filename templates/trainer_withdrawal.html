@@ -1,0 +1,174 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2><i class="fas fa-hand-holding-usd"></i> 申請提領</h2>
+
+<div class="card" style="max-width: 600px;">
+    <div
+        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 0.9rem; opacity: 0.9;">當前可提領餘額</h3>
+        <div style="font-size: 2rem; font-weight: bold;">${{ "%.2f"|format(balance) }}</div>
+    </div>
+
+    <form method="post" onsubmit="return confirm('確定要送出提領申請嗎？');">
+        {% if saved_accounts %}
+
+        <div class="form-group"
+            style="background: #f9fafb; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <label for="saved_account_select" style="margin-bottom: 5px;">選擇常用帳戶</label>
+            <div style="display: flex; gap: 10px;">
+                <select id="saved_account_select" class="form-control" onchange="fillAccountInfo(this.value)">
+                    <option value="">-- 請選擇 --</option>
+                    {% for acc in saved_accounts %}
+                    <option value='{{ acc | tojson }}' data-id="{{ acc.id }}">
+                        {{ acc.bank_code }} - {{ acc.bank_account }} ({{ acc.account_holder }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="delete_account_btn" class="btn btn-outline-danger"
+                    style="display: none; border: 1px solid #ef4444; color: #ef4444; background: white; padding: 0 15px; border-radius: 8px; cursor: pointer;"
+                    onclick="deleteBankAccount()">
+                    <i class="fas fa-trash-alt"></i> 刪除
+                </button>
+            </div>
+        </div>
+        {% endif %}
+        <div class="form-group">
+            <label for="amount">提領金額 <span style="color: red;">*</span></label>
+            <input type="number" id="amount" name="amount" class="form-control" min="1" max="{{ balance }}" step="0.01"
+                placeholder="請輸入提領金額" required>
+            <small class="text-muted">最多可提領 ${{ "%.2f"|format(balance) }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="bank_name">銀行代碼 <span style="color: red;">*</span></label>
+            <input type="text" id="bank_name" name="bank_name" class="form-control" placeholder="例如：004"
+                pattern="[0-9]{3}" maxlength="3" required>
+            <small class="text-muted">請輸入 3 碼銀行代碼</small>
+        </div>
+
+        <div class="form-group">
+            <label for="bank_account">銀行帳號 <span style="color: red;">*</span></label>
+            <input type="text" id="bank_account" name="bank_account" class="form-control" placeholder="請輸入銀行帳號"
+                required>
+        </div>
+
+        <div class="form-group">
+            <label for="account_holder">帳戶持有人姓名 <span style="color: red;">*</span></label>
+            <input type="text" id="account_holder" name="account_holder" class="form-control" placeholder="請輸入帳戶持有人姓名"
+                required>
+        </div>
+
+        <div class="form-check" style="margin: 10px 0 20px 0;">
+            <input type="checkbox" id="save_account" name="save_account"
+                style="vertical-align: middle; margin-right: 5px;">
+            <label for="save_account" style="display: inline; font-size: 0.95rem; color: #4b5563;">加入常用銀行帳戶</label>
+        </div>
+
+        <script>
+            function fillAccountInfo(jsonStr) {
+                const deleteBtn = document.getElementById('delete_account_btn');
+
+                if (!jsonStr) {
+                    deleteBtn.style.display = 'none';
+                    // Clear fields if needed, or leave as is? Let's clear for better UX
+                    document.getElementById('bank_name').value = '';
+                    document.getElementById('bank_account').value = '';
+                    document.getElementById('account_holder').value = '';
+                    return;
+                }
+
+                deleteBtn.style.display = 'block';
+                const account = JSON.parse(jsonStr);
+                document.getElementById('bank_name').value = account.bank_code;
+                document.getElementById('bank_account').value = account.bank_account;
+                document.getElementById('account_holder').value = account.account_holder;
+            }
+
+            function deleteBankAccount() {
+                const select = document.getElementById('saved_account_select');
+                const option = select.options[select.selectedIndex];
+                const accountId = option.getAttribute('data-id');
+
+                if (!accountId) return;
+
+                if (!confirm('確定要刪除這個常用帳戶嗎？')) return;
+
+                fetch(`/api/bank_accounts/${accountId}`, {
+                    method: 'DELETE'
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('帳戶已刪除');
+                            // Remove option
+                            option.remove();
+                            // Reset selection
+                            select.value = "";
+                            fillAccountInfo("");
+
+                            // If no options left (except default), hide the whole block? 
+                            if (select.options.length <= 1) {
+                                window.location.reload(); // Simplest way to hide the block if empty
+                            }
+                        } else {
+                            alert('刪除失敗');
+                        }
+                    });
+            }
+        </script>
+
+        <div
+            style="background: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+            <p style="margin: 0; font-size: 0.9rem; color: #1e40af;">
+                <i class="fas fa-info-circle"></i>
+                <strong>提醒：</strong>提領申請送出後，需等待管理員審核。審核通過後，款項將於 3-5 個工作天內匯入您指定的銀行帳戶。
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <a href="{{ url_for('trainer_account') }}" class="btn btn-ghost" style="flex: 1;">
+                <i class="fas fa-arrow-left"></i> 返回
+            </a>
+            <button type="submit" class="btn btn-primary" style="flex: 2;">
+                <i class="fas fa-paper-plane"></i> 送出申請
+            </button>
+        </div>
+    </form>
+</div>
+
+<style>
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .text-muted {
+        display: block;
+        margin-top: 5px;
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+</style>
+{% endblock %}

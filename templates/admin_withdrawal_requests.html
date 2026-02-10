@@ -1,0 +1,321 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;"><i class="fas fa-hand-holding-usd"></i> 餘額提領申請</h2>
+</div>
+
+<!-- Platform Account Balance Card -->
+<div class="card"
+    style="background: linear-gradient(135deg, #10b981, #059669); color: white; margin-bottom: 25px; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h3 style="margin: 0 0 8px 0; font-size: 0.9rem; opacity: 0.9;">
+                <i class="fas fa-university"></i> 平台帳戶餘額
+            </h3>
+            <div style="font-size: 2rem; font-weight: bold;">
+                ${{ "%.2f"|format(platform_balance) }}
+            </div>
+        </div>
+        <div style="text-align: right; opacity: 0.9;">
+            <div style="font-size: 0.85rem;"><i class="fas fa-info-circle"></i> 此金額用於支付訓練師提領</div>
+            <div style="font-size: 0.8rem; margin-top: 5px;">消費者付款會自動計入平台帳戶</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+    <div class="tab active" onclick="switchTab('pending')" id="tab-pending"
+        style="padding: 10px 20px; cursor: pointer; font-weight: 600; color: #4b5563; border-bottom: 2px solid transparent; margin-bottom: -2px;">
+        待審核申請
+        {% if pending_requests %}
+        <span
+            style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-left: 5px;">
+            {{ pending_requests|length }}
+        </span>
+        {% endif %}
+    </div>
+    <div class="tab" onclick="switchTab('history')" id="tab-history"
+        style="padding: 10px 20px; cursor: pointer; font-weight: 600; color: #4b5563; border-bottom: 2px solid transparent; margin-bottom: -2px;">
+        歷史紀錄
+    </div>
+</div>
+
+<!-- Pending Requests Tab -->
+<div id="content-pending" style="display: block;">
+    {% if pending_requests %}
+    <div style="display: grid; gap: 20px;">
+        {% for req in pending_requests %}
+        <div class="card" style="border-left: 4px solid #f59e0b;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                <div>
+                    <h3 style="margin: 0 0 5px 0;">
+                        {{ req.trainer_name or req.trainer_nickname }}
+                        <span style="font-size: 0.9rem; color: #666; font-weight: normal;">(#{{ req.id }})</span>
+                    </h3>
+                    <p style="margin: 0; color: #666; font-size: 0.9rem;">
+                        申請時間：{{ req.created_at | utc8 }}
+                    </p>
+                </div>
+                <div>
+                    <span
+                        style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                        ⏳ 待審核
+                    </span>
+                </div>
+            </div>
+
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                <div style="background: #f9fafb; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 5px;">提領金額</div>
+                    <div style="font-size: 1.3rem; font-weight: bold; color: #ef4444;">
+                        ${{ "%.2f"|format(req.amount) }}
+                    </div>
+                </div>
+
+                <div style="background: #f9fafb; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 5px;">當前餘額</div>
+                    <div style="font-size: 1.3rem; font-weight: bold; color: #10b981;">
+                        ${{ "%.2f"|format(req.current_balance or 0) }}
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #374151;">銀行資訊</h4>
+                <div style="display: grid; gap: 8px; font-size: 0.9rem;">
+                    <div><strong>銀行代碼：</strong>{{ req.bank_name }}</div>
+                    <div><strong>銀行帳號：</strong>{{ req.bank_account }}</div>
+                    <div><strong>帳戶持有人：</strong>{{ req.account_holder }}</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <form method="post" action="{{ url_for('admin_approve_withdrawal', request_id=req.id) }}"
+                    style="flex: 1;">
+                    <button type="submit" class="btn btn-primary" style="width: 100%;"
+                        onclick="return confirm('確定要核准此提領申請嗎？\n\n提領金額：${{ '%.2f'|format(req.amount) }}\n訓練師餘額：${{ '%.2f'|format(req.current_balance or 0) }}\n\n核准後將從訓練師帳戶扣除該金額。')">
+                        <i class="fas fa-check"></i> 核准提領
+                    </button>
+                </form>
+
+                <button type="button" class="btn btn-ghost" style="flex: 1;" onclick="showRejectModal({{ req.id }})">
+                    <i class="fas fa-times"></i> 拒絕
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: 60px 20px; color: #888;">
+        <i class="fas fa-inbox" style="font-size: 4rem; color: #ddd; margin-bottom: 20px;"></i>
+        <p style="font-size: 1.1rem;">目前沒有待審核的申請</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- History Tab -->
+<div id="content-history" style="display: none;">
+    <!-- Date Filter -->
+    <div class="card" style="margin-bottom: 20px; padding: 15px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <label for="history-date-filter" style="margin: 0; font-size: 0.9rem; color: #666; font-weight: 600;">
+                <i class="fas fa-calendar-alt"></i> 篩選申請日期：
+            </label>
+            <input type="date" id="history-date-filter" class="form-control"
+                style="width: auto; padding: 5px 10px; height: 38px;" onchange="filterHistoryByDate()">
+        </div>
+    </div>
+
+    {% if history_requests %}
+    <div id="history-list" style="display: grid; gap: 20px;">
+        {% for req in history_requests %}
+        <div class="history-item card" data-date="{{ (req.created_at | utc8)[:10] }}"
+            style="{% if req.status == 'approved' %}border-left: 4px solid #10b981;{% else %}border-left: 4px solid #ef4444;{% endif %} opacity: 0.9;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                <div>
+                    <h3 style="margin: 0 0 5px 0;">
+                        {{ req.trainer_name or req.trainer_nickname }}
+                        <span style="font-size: 0.9rem; color: #666; font-weight: normal;">(#{{ req.id }})</span>
+                    </h3>
+                    <p style="margin: 0; color: #666; font-size: 0.9rem;">
+                        申請時間：{{ req.created_at | utc8 }}
+                    </p>
+                </div>
+                <div>
+                    {% if req.status == 'approved' %}
+                    <span
+                        style="background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                        ✓ 已核准
+                    </span>
+                    {% else %}
+                    <span
+                        style="background: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                        ✗ 已拒絕
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                <div style="background: #f9fafb; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 5px;">提領金額</div>
+                    <div style="font-size: 1.3rem; font-weight: bold; color: #ef4444;">
+                        ${{ "%.2f"|format(req.amount) }}
+                    </div>
+                </div>
+
+                <div style="background: #f9fafb; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 5px;">當前餘額</div>
+                    <div style="font-size: 1.3rem; font-weight: bold; color: #10b981;">
+                        ${{ "%.2f"|format(req.current_balance or 0) }}
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #374151;">銀行資訊</h4>
+                <div style="display: grid; gap: 8px; font-size: 0.9rem;">
+                    <div><strong>銀行代碼：</strong>{{ req.bank_name }}</div>
+                    <div><strong>銀行帳號：</strong>{{ req.bank_account }}</div>
+                    <div><strong>帳戶持有人：</strong>{{ req.account_holder }}</div>
+                </div>
+            </div>
+
+            <div style="background: #eff6ff; padding: 12px; border-radius: 8px;">
+                <div style="font-size: 0.85rem; color: #1e40af;">
+                    <strong>處理時間：</strong>{{ req.processed_at | utc8 if req.processed_at else '-' }}
+                </div>
+                {% if req.admin_note %}
+                <div style="font-size: 0.85rem; color: #1e40af; margin-top: 5px;">
+                    <strong>備註：</strong>{{ req.admin_note }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: 60px 20px; color: #888;">
+        <i class="fas fa-history" style="font-size: 4rem; color: #ddd; margin-bottom: 20px;"></i>
+        <p style="font-size: 1.1rem;">目前沒有歷史紀錄</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal"
+    style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%;">
+        <h3 style="margin-top: 0;">拒絕提領申請</h3>
+        <form id="rejectForm" method="post">
+            <div class="form-group">
+                <label for="admin_note">拒絕原因（選填）</label>
+                <textarea id="admin_note" name="admin_note" class="form-control" rows="3"
+                    placeholder="請輸入拒絕原因..."></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn btn-ghost" style="flex: 1;" onclick="hideRejectModal()">
+                    取消
+                </button>
+                <button type="submit" class="btn btn-primary" style="flex: 1; background: #ef4444;">
+                    確認拒絕
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        font-family: inherit;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+</style>
+
+<script>
+    function switchTab(tabName) {
+        // Hide all content
+        document.getElementById('content-pending').style.display = 'none';
+        document.getElementById('content-history').style.display = 'none';
+
+        // Remove active class from all tabs
+        document.getElementById('tab-pending').classList.remove('active');
+        document.getElementById('tab-history').classList.remove('active');
+        document.getElementById('tab-pending').style.borderBottomColor = 'transparent';
+        document.getElementById('tab-history').style.borderBottomColor = 'transparent';
+        document.getElementById('tab-pending').style.color = '#4b5563';
+        document.getElementById('tab-history').style.color = '#4b5563';
+
+        // Show selected content and activate tab
+        document.getElementById('content-' + tabName).style.display = 'block';
+        const activeTab = document.getElementById('tab-' + tabName);
+        activeTab.classList.add('active');
+        activeTab.style.borderBottomColor = '#3b82f6';
+        activeTab.style.color = '#3b82f6';
+    }
+
+    function showRejectModal(requestId) {
+        const modal = document.getElementById('rejectModal');
+        const form = document.getElementById('rejectForm');
+        form.action = `/admin/withdrawal/${requestId}/reject`;
+        modal.style.display = 'flex';
+    }
+
+    function hideRejectModal() {
+        const modal = document.getElementById('rejectModal');
+        modal.style.display = 'none';
+        document.getElementById('admin_note').value = '';
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('rejectModal').addEventListener('click', function (e) {
+        if (e.target === this) {
+            hideRejectModal();
+        }
+    });
+
+    // Initialize default tab styling
+    document.addEventListener('DOMContentLoaded', function () {
+        switchTab('pending');
+    });
+
+    function filterHistoryByDate() {
+        const filterDate = document.getElementById('history-date-filter').value;
+        const items = document.querySelectorAll('.history-item');
+
+        items.forEach(function (item) {
+            const itemDate = item.getAttribute('data-date');
+            if (!filterDate || itemDate === filterDate) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+</script>
+{% endblock %}

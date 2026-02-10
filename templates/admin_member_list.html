@@ -1,0 +1,73 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>會員資料管理</h2>
+
+<div
+    style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <form action="{{ url_for('admin_member_management') }}" method="get"
+        style="display: flex; gap: 10px; flex: 1; max-width: 500px;">
+        <select name="role" class="form-select"
+            style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; width: auto; background-color: white;"
+            onchange="this.form.submit()">
+            <option value="all" {% if current_role=='all' %}selected{% endif %}>所有身分</option>
+            <option value="member" {% if current_role=='member' %}selected{% endif %}>一般會員</option>
+            <option value="trainer" {% if current_role=='trainer' %}selected{% endif %}>訓練師</option>
+            <option value="admin" {% if current_role=='admin' %}selected{% endif %}>管理員</option>
+        </select>
+        <input type="text" name="q" placeholder="搜尋姓名、暱稱或電子信箱..." value="{{ search_query }}"
+            style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+        <button type="submit" class="btn btn-primary" style="padding: 8px 20px; white-space: nowrap;">
+            搜尋
+        </button>
+        {% if search_query or (current_role and current_role != 'all') %}
+        <a href="{{ url_for('admin_member_management') }}" class="btn"
+            style="background-color: #6b7280; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; display: flex; align-items: center; white-space: nowrap;">
+            清除
+        </a>
+        {% endif %}
+    </form>
+    <span style="color: #666; font-size: 0.9rem;">共 {{ users|length }} 位會員</span>
+</div>
+<div class="card">
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 600px;">
+            <thead>
+                <tr style="border-bottom: 2px solid #eee; text-align: left; background-color: #f9fafb;">
+                    <th style="padding: 12px 10px;">身分</th>
+                    <th style="padding: 12px 10px;">姓名 (暱稱)</th>
+                    <th style="padding: 12px 10px;">電子信箱</th>
+                    <th style="padding: 12px 10px;">性別</th>
+                    <th style="padding: 12px 10px;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 10px;">
+                        {% if user['role'] == 'admin' %}
+                        <span
+                            style="background-color: #374151; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">管理員</span>
+                        {% elif user['role'] == 'trainer' %}
+                        <span
+                            style="background-color: #2563eb; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">訓練師</span>
+                        {% else %}
+                        <span
+                            style="background-color: #9ca3af; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">會員</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 10px;">{{ user['name'] }}<br><span style="color: #666; font-size: 0.9rem;">{{
+                            user['nickname'] }}</span></td>
+                    <td style="padding: 10px;">{{ user['email'] }}</td>
+                    <td style="padding: 10px;">{{ '男' if user['gender'] == 'male' else '女' }}</td>
+                    <td style="padding: 10px;">
+                        <a href="{{ url_for('admin_member_detail', user_id=user['id']) }}" class="btn btn-primary"
+                            style="padding: 5px 10px; font-size: 0.9rem;">查看詳情</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

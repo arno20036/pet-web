@@ -1,0 +1,35 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>訓練師申請審核</h2>
+<div class="card">
+    {% if applications %}
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="border-bottom: 2px solid #eee; text-align: left;">
+                <th style="padding: 10px;">申請人</th>
+                <th style="padding: 10px;">電子信箱</th>
+                <th style="padding: 10px;">實務經驗</th>
+                <th style="padding: 10px;">申請時間</th>
+                <th style="padding: 10px;">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for app in applications %}
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 10px;">{{ app['name'] }}</td>
+                <td style="padding: 10px;">{{ app['email'] }}</td>
+                <td style="padding: 10px;">{{ app['experience_years'] }} 年</td>
+                <td style="padding: 10px;">{{ app['created_at'] }}</td>
+                <td style="padding: 10px;">
+                    <a href="{{ url_for('admin_trainer_review_detail', app_id=app['id']) }}" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.9rem;">查看詳情</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>目前沒有待審核的申請。</p>
+    {% endif %}
+</div>
+{% endblock %}

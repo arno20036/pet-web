@@ -1,0 +1,228 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+    <h2 style="margin: 0;"><i class="fas fa-file-alt"></i> 案件詳情 #{{ appeal.id }}</h2>
+    <a href="{{ url_for('admin_appeals') }}" class="btn btn-outline"
+        style="padding: 8px 20px; border-radius: 20px; border: 1px solid #ccc;">
+        <i class="fas fa-arrow-left me-1"></i> 返回列表
+    </a>
+</div>
+
+{% set border_color = '#6c757d' %}
+{% set badge_bg = '#f3f4f6' %}
+{% set badge_color = '#374151' %}
+{% set status_text = '未知' %}
+
+{% if appeal.status == 'pending' %}
+{% set border_color = '#f59e0b' %}
+{% set badge_bg = '#fef3c7' %}
+{% set badge_color = '#92400e' %}
+{% set status_text = '待處理' %}
+{% elif appeal.status == 'processing' %}
+{% set border_color = '#3b82f6' %}
+{% set badge_bg = '#dbeafe' %}
+{% set badge_color = '#1e40af' %}
+{% set status_text = '處理中' %}
+{% elif appeal.status == 'resolved' %}
+{% set border_color = '#10b981' %}
+{% set badge_bg = '#d1fae5' %}
+{% set badge_color = '#065f46' %}
+{% set status_text = '已解決' %}
+{% elif appeal.status == 'closed' %}
+{% set border_color = '#6b7280' %}
+{% set badge_bg = '#f3f4f6' %}
+{% set badge_color = '#1f2937' %}
+{% set status_text = '已結案' %}
+{% endif %}
+
+<!-- Summary Cards -->
+<div
+    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px;">
+    <div class="card"
+        style="background: linear-gradient(135deg, {{ border_color }} 0%, {{ border_color }}cc 100%); color: white; padding: 20px;">
+        <h3 style="margin-top: 0; font-size: 0.85rem; opacity: 0.9;">當前狀態</h3>
+        <div style="font-size: 1.6rem; font-weight: bold; margin: 8px 0;">{{ status_text }}</div>
+        <p style="margin: 0; font-size: 0.8rem; opacity: 0.8;">案件編號 #{{ appeal.id }}</p>
+    </div>
+
+    <div class="card"
+        style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 20px;">
+        <h3 style="margin-top: 0; font-size: 0.85rem; opacity: 0.9;">關聯訂單</h3>
+        <div style="font-size: 1.4rem; font-weight: bold; margin: 8px 0;">#{{ appeal.order_id }}</div>
+        <p style="margin: 0; font-size: 0.8rem; opacity: 0.8;">{{ appeal.booking_date }} {{ appeal.booking_time }}</p>
+    </div>
+
+    <div class="card"
+        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px;">
+        <h3 style="margin-top: 0; font-size: 0.85rem; opacity: 0.9;">訂單金額</h3>
+        <div style="font-size: 1.6rem; font-weight: bold; margin: 8px 0;">${{ appeal.total_price }}</div>
+        <p style="margin: 0; font-size: 0.8rem; opacity: 0.8;">服務費用</p>
+    </div>
+</div>
+
+<!-- Main Content Card -->
+<div class="card mb-3" style="border-left: 5px solid {{ border_color }};">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+        <div>
+            <h4 style="margin: 0 0 5px 0; font-size: 1.2rem;">
+                {% if appeal.reason == 'trainer_absent' %}訓練師未出席
+                {% elif appeal.reason == 'service_quality' %}服務品質不佳
+                {% elif appeal.reason == 'refund_request' %}退款申請
+                {% elif appeal.reason == 'accident' %}發生意外/事故
+                {% elif appeal.reason == 'other' %}其他問題
+                {% else %}{{ appeal.reason }}
+                {% endif %}
+            </h4>
+            <p style="color: #666; margin: 0; font-size: 0.9rem;">
+                <i class="far fa-clock"></i> 提出時間：{{ appeal.created_at | utc8 }}
+            </p>
+        </div>
+        <span
+            style="background: {{ badge_bg }}; color: {{ badge_color }}; padding: 6px 14px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;">
+            {{ status_text }}
+        </span>
+    </div>
+
+    <!-- Original Appeal Content -->
+    <div
+        style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #3b82f6;">
+        <label style="font-size: 0.8rem; color: #1e40af; font-weight: 600; display: block; margin-bottom: 8px;"><i
+                class="fas fa-file-alt"></i> 原始申訴內容</label>
+        <div style="line-height: 1.7; color: #333; white-space: pre-wrap;">{{ appeal.description }}</div>
+    </div>
+
+    <!-- People Involved -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
+            <label style="font-size: 0.75rem; color: #1565c0; font-weight: 600; display: block; margin-bottom: 8px;"><i
+                    class="fas fa-user"></i> 申訴人 (買家)</label>
+            <div style="font-weight: 600; color: #333;">{{ appeal.user_name }}</div>
+            <div style="font-size: 0.85rem; color: #666;">{{ appeal.user_email }}</div>
+        </div>
+        <div style="background: #fff3cd; padding: 15px; border-radius: 8px;">
+            <label style="font-size: 0.75rem; color: #856404; font-weight: 600; display: block; margin-bottom: 8px;"><i
+                    class="fas fa-user-tie"></i> 被投訴對象 (訓練師)</label>
+            <div style="font-weight: 600; color: #333;">{{ appeal.seller_name }}</div>
+            <div style="font-size: 0.85rem; color: #666;">{{ appeal.seller_email }}</div>
+        </div>
+    </div>
+
+    <!-- Conversation Section -->
+    <div style="border-top: 1px dashed #eee; padding-top: 20px;">
+        <h4 style="margin: 0 0 15px 0; font-size: 1rem;"><i class="fas fa-comments"></i> 對話紀錄</h4>
+
+        <div
+            style="background: #f9fafb; border-radius: 8px; padding: 15px; max-height: 400px; overflow-y: auto; margin-bottom: 20px;">
+            {% if messages %}
+            {% for msg in messages %}
+            {% if msg.sender_role == 'user' %}
+            <!-- User message - left aligned -->
+            <div style="display: flex; justify-content: flex-start; margin-bottom: 12px;">
+                <div
+                    style="max-width: 75%; background: white; border: 1px solid #e5e7eb; padding: 12px 16px; border-radius: 16px 16px 16px 4px;">
+                    <div style="font-size: 0.75rem; color: #3b82f6; font-weight: 600; margin-bottom: 4px;"><i
+                            class="fas fa-user"></i> {{ msg.sender_nickname or msg.sender_name }}</div>
+                    <div style="font-size: 0.85rem; color: #333; white-space: pre-wrap;">{{ msg.message }}</div>
+                    <div style="font-size: 0.7rem; color: #888; margin-top: 5px;">{{ msg.created_at | utc8 }}</div>
+                </div>
+            </div>
+            {% else %}
+            <!-- Admin message - right aligned -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+                <div
+                    style="max-width: 75%; background: #8b5cf6; color: white; padding: 12px 16px; border-radius: 16px 16px 4px 16px;">
+                    <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 4px;"><i class="fas fa-headset"></i>
+                        客服回覆</div>
+                    <div style="font-size: 0.85rem; white-space: pre-wrap;">{{ msg.message }}</div>
+                    <div style="font-size: 0.7rem; opacity: 0.8; margin-top: 5px; text-align: right;">{{ msg.created_at
+                        | utc8 }}</div>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+            {% else %}
+            <div style="text-align: center; color: #888; padding: 30px;">
+                <i class="fas fa-comment-slash" style="font-size: 2rem; margin-bottom: 10px; opacity: 0.5;"></i>
+                <p style="margin: 0;">尚無對話紀錄</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Reply Form -->
+        <form method="post" id="adminAppealForm">
+            <div style="margin-bottom: 15px;">
+                <label
+                    style="font-size: 0.85rem; color: #555; font-weight: 600; display: block; margin-bottom: 8px;">新增處理備註
+                    / 回覆</label>
+                <textarea name="admin_reply" id="adminReply" class="form-control" rows="3"
+                    style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; resize: none; font-size: 0.95rem;"
+                    placeholder="請輸入處理過程、退款結果或給使用者的回覆..."></textarea>
+            </div>
+            <input type="hidden" name="action" id="actionInput" value="">
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="btn" data-action="reply_only"
+                    style="background: #8b5cf6; color: white; padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer;">
+                    <i class="fas fa-paper-plane"></i> 送出留言
+                </button>
+                <button type="button" class="btn" data-action="process"
+                    style="background: #3b82f6; color: white; padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer;">
+                    <i class="fas fa-spinner"></i> 更至處理中
+                </button>
+                <button type="button" class="btn" data-action="resolve"
+                    style="background: #10b981; color: white; padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer;">
+                    <i class="fas fa-check"></i> 標記為已解決
+                </button>
+                <button type="button" class="btn" data-action="close"
+                    style="background: #6b7280; color: white; padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer;">
+                    <i class="fas fa-archive"></i> 結案
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll('#adminAppealForm button[data-action]').forEach(button => {
+        button.addEventListener('click', function () {
+            const action = this.dataset.action;
+            const actionLabels = {
+                'reply_only': '送出留言',
+                'process': '更至處理中',
+                'resolve': '標記為已解決',
+                'close': '結案'
+            };
+            const actionColors = {
+                'reply_only': '#8b5cf6',
+                'process': '#3b82f6',
+                'resolve': '#10b981',
+                'close': '#6b7280'
+            };
+            const actionIcons = {
+                'reply_only': 'question',
+                'process': 'info',
+                'resolve': 'success',
+                'close': 'warning'
+            };
+
+            Swal.fire({
+                title: '確定執行此操作？',
+                text: `您即將「${actionLabels[action]}」此案件`,
+                icon: actionIcons[action],
+                showCancelButton: true,
+                confirmButtonColor: actionColors[action],
+                cancelButtonColor: '#d33',
+                confirmButtonText: '確定',
+                cancelButtonText: '取消'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('actionInput').value = action;
+                    document.getElementById('adminAppealForm').submit();
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

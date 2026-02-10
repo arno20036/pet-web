@@ -1,0 +1,106 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>刊登詳情</h2>
+<div class="card">
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('trainer_manage_listings') }}"
+            style="color: var(--text-muted); text-decoration: none;">&larr; 返回管理列表</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <!-- Listing Information -->
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">基本資訊</h3>
+            <div class="form-group">
+                <label>狀態</label>
+                <p>
+                    {% if listing['status'] == 'approved' %}
+                    <span style="color: #10b981; font-weight: bold;">已上架</span>
+                    {% elif listing['status'] == 'closed' %}
+                    <span style="color: #666; font-weight: bold;">已下架</span>
+                    {% elif listing['status'] == 'pending' %}
+                    <span style="color: #f59e0b; font-weight: bold;">待審核</span>
+                    {% elif listing['status'] == 'rejected' %}
+                    <span style="color: #dc2626; font-weight: bold;">已駁回</span>
+                    {% elif listing['status'] == 'modification_pending' %}
+                    <span style="color: #f59e0b; font-weight: bold;">修改審核中</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="form-group">
+                <label>寵物類型</label>
+                <p>{% if listing['pet_type'] == 'dog' %}狗{% elif listing['pet_type'] == 'cat' %}貓{% else %}{{
+                    listing['pet_type'] }}{% endif %}</p>
+            </div>
+            <div class="form-group">
+                <label>品種</label>
+                <p>{{ listing['breed'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>寵物暱稱</label>
+                <p>{{ listing['pet_name'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>服務價格</label>
+                <p>{{ listing['price'] }} 元 / 小時</p>
+            </div>
+            <div class="form-group">
+                <label>可預約時段</label>
+                <p>{{ listing['available_slots'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>取消時限</label>
+                <p>前 {{ listing['cancellation_hours'] }} 小時</p>
+            </div>
+            <div class="form-group">
+                <label>申請時間</label>
+                <p>{{ listing['created_at'] }}</p>
+            </div>
+        </div>
+
+        <!-- Details -->
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">詳細說明</h3>
+            <div class="form-group">
+                <label>寵物介紹 / 特色</label>
+                <p style="white-space: pre-line;">{{ listing['introduction'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>相關規定</label>
+                <p style="white-space: pre-line;">{{ listing['rules'] }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">寵物照片</h3>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            {% for image in images %}
+            <div style="border: 1px solid #ddd; padding: 5px; border-radius: 8px;">
+                <img src="{{ url_for('uploaded_file', filename=image) }}" alt="寵物圖片"
+                    style="height: 150px; object-fit: cover; border-radius: 4px;">
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+
+    <div>
+        {% if listing['status'] == 'modification_pending' %}
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <form action="{{ url_for('trainer_cancel_modification', listing_id=listing['id']) }}" method="post"
+                onsubmit="return confirm('確定要取消修改申請嗎？取消後將移至已下架列表。');">
+                <button type="submit" class="btn btn-outline"
+                    style="color: #dc2626; border-color: #dc2626;">取消修改申請</button>
+            </form>
+        </div>
+        {% elif listing['status'] != 'approved' %}
+        <a href="{{ url_for('trainer_listing_edit', listing_id=listing['id']) }}" class="btn btn-primary">修改刊登資料</a>
+        {% else %}
+        <p class="text-muted">如需修改資料，請先將刊登內容下架。</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,347 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <h2><i class="fas fa-credit-card"></i> 線上付款</h2>
+
+    <!-- Order Summary -->
+    <div class="card" style="margin-bottom: 30px; background: #f9fafb; border-left: 4px solid var(--primary-color);">
+        <h3 style="margin-top: 0; color: var(--primary-color);">訂單摘要</h3>
+        <div style="display: grid; gap: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #666;">寵物名稱：</span>
+                <strong>{{ order.pet_name }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #666;">訓練師：</span>
+                <strong>{{ order.trainer_nickname or order.trainer_name }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #666;">預約時間：</span>
+                <strong>{{ order.booking_date }} {{ order.booking_time }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #666;">時長：</span>
+                <strong>{{ order.duration }} 小時</strong>
+            </div>
+            <hr style="margin: 10px 0; border: none; border-top: 1px dashed #ddd;">
+            {% if order.remaining_amount is defined and order.remaining_amount < order.total_price %} <div
+                style="display: flex; justify-content: space-between;">
+                <span style="color: #666;">總金額：</span>
+                <strong>${{ order.total_price }}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <span style="color: #666;">已付金額：</span>
+            <strong>${{ order.paid_amount }}</strong>
+        </div>
+        <hr style="margin: 10px 0; border: none; border-top: 1px dashed #ddd;">
+        <div style="display: flex; justify-content: space-between; font-size: 1.2rem;">
+            <span style="color: #666;">本次應付：</span>
+            <strong style="color: var(--primary-color);">${{ order.remaining_amount }}</strong>
+        </div>
+        {% else %}
+        <div style="display: flex; justify-content: space-between; font-size: 1.2rem;">
+            <span style="color: #666;">應付金額：</span>
+            <strong style="color: var(--primary-color);">${{ order.total_price }}</strong>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Payment Form -->
+<div class="card">
+    <h3 style="margin-top: 0;"><i class="fas fa-lock"></i> 付款資訊</h3>
+    <form method="post" id="paymentForm">
+        <!-- Payment Method Selection -->
+        <div class="form-group">
+            <label style="margin-bottom: 15px;">選擇付款方式</label>
+
+            {% if saved_methods %}
+            <div class="saved-methods-list">
+                {% for method in saved_methods %}
+                <div class="method-item" id="method-item-{{ method.id }}">
+                    <label class="radio-label">
+                        <input type="radio" name="saved_method_id" value="{{ method.id }}"
+                            onchange="togglePaymentForm(false)">
+                        <div class="method-info">
+                            <span class="card-brand"><i class="fas fa-credit-card"></i></span>
+                            <span class="card-number">{{ method.card_number_masked }}</span>
+                            <span class="card-expiry">Expires {{ method.card_expiry }}</span>
+                        </div>
+                    </label>
+                    <button type="button" class="btn-delete" onclick="deleteMethod({{ method.id }})" title="刪除此卡片">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="method-item">
+                <label class="radio-label">
+                    <input type="radio" name="saved_method_id" value="" checked onchange="togglePaymentForm(true)">
+                    <span style="font-weight: 500;">使用新信用卡付款</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- New Card Form -->
+        <div id="newCardForm">
+            <div class="form-group">
+                <label for="card_number">信用卡卡號 <span style="color: red;">*</span></label>
+                <input type="text" id="card_number" name="card_number" class="form-control"
+                    placeholder="1234 5678 9012 3456" maxlength="19" pattern="[0-9\s]{13,19}">
+                <small class="text-muted">請輸入 13-16 位數字</small>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label for="expiry_month">有效期限 <span style="color: red;">*</span></label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <input type="text" id="expiry_month" name="expiry_month" class="form-control" placeholder="MM"
+                            maxlength="2" pattern="(0[1-9]|1[0-2])" inputmode="numeric" title="月份 (01-12)">
+                        <input type="text" id="expiry_year" name="expiry_year" class="form-control" placeholder="YYYY"
+                            maxlength="4" pattern="20[2-9][0-9]" inputmode="numeric" title="年份 (例如 2026)">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="cvv">安全碼 (CVV) <span style="color: red;">*</span></label>
+                    <input type="text" id="cvv" name="cvv" class="form-control" placeholder="123" maxlength="4"
+                        pattern="[0-9]{3,4}">
+                    <small class="text-muted">卡片背面 3-4 位數字</small>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="cardholder_name">持卡人姓名 <span style="color: red;">*</span></label>
+                <input type="text" id="cardholder_name" name="cardholder_name" class="form-control"
+                    placeholder="WANG XIAO MING">
+                <small class="text-muted">請輸入信用卡上的英文姓名</small>
+            </div>
+
+            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" id="save_card" name="save_card" value="true" style="width: auto;">
+                <label for="save_card" style="margin: 0; font-weight: normal;">儲存此卡片以便下次快速付款</label>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 30px;">
+            <a href="{{ url_for('member_orders') }}" class="btn btn-ghost" style="flex: 1;">
+                <i class="fas fa-arrow-left"></i> 返回
+            </a>
+            <button type="submit" class="btn btn-primary" style="flex: 2;">
+                <i class="fas fa-check-circle"></i> 確認付款 ${{ order.remaining_amount if order.remaining_amount is defined
+                else order.total_price }}
+            </button>
+        </div>
+    </form>
+</div>
+</div>
+
+<style>
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .text-muted {
+        display: block;
+        margin-top: 5px;
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+
+    select.form-control {
+        cursor: pointer;
+    }
+
+    .saved-methods-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+
+    .method-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: white;
+        transition: all 0.2s;
+    }
+
+    .method-item:hover {
+        border-color: var(--primary-color);
+        background: #fdfeff;
+    }
+
+    .radio-label {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+        flex: 1;
+        margin: 0;
+    }
+
+    .method-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .card-number {
+        font-weight: 600;
+        color: #374151;
+        letter-spacing: 0.5px;
+    }
+
+    .card-expiry {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+
+    .btn-delete {
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        padding: 5px 10px;
+        border-radius: 4px;
+        transition: background 0.2s;
+    }
+
+    .btn-delete:hover {
+        background: #fee2e2;
+    }
+</style>
+
+<script>
+    function togglePaymentForm(showNew) {
+        const form = document.getElementById('newCardForm');
+        const inputs = form.querySelectorAll('input:not([type="checkbox"]), select');
+
+        if (showNew) {
+            form.style.display = 'block';
+            inputs.forEach(input => input.setAttribute('required', 'required'));
+        } else {
+            form.style.display = 'none';
+            inputs.forEach(input => input.removeAttribute('required'));
+        }
+    }
+
+    function deleteMethod(id) {
+        if (!confirm('確定要刪除這張儲存的卡片嗎？')) return;
+
+        fetch(`/api/payment_methods/${id}`, {
+            method: 'DELETE'
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const el = document.getElementById(`method-item-${id}`);
+                    el.remove();
+
+                    // If no saved methods left, auto select new card
+                    const remaining = document.querySelectorAll('.saved-methods-list .method-item');
+                    if (remaining.length === 0) {
+                        document.querySelector('.saved-methods-list').remove();
+                        document.querySelector('input[value=""][name="saved_method_id"]').checked = true;
+                        togglePaymentForm(true);
+                    }
+                } else {
+                    alert('刪除失敗');
+                }
+            });
+    }
+
+    // Init state
+    // Check if any saved method is checked, otherwise default to new card
+    const savedChecked = document.querySelector('input[name="saved_method_id"]:checked');
+    if (savedChecked && savedChecked.value !== "") {
+        togglePaymentForm(false);
+    } else {
+        // Default to new card
+        const newCardRadio = document.querySelector('input[value=""][name="saved_method_id"]');
+        if (newCardRadio) newCardRadio.checked = true;
+        togglePaymentForm(true);
+    }
+
+    // Format card number with spaces
+    document.getElementById('card_number').addEventListener('input', function (e) {
+        let value = e.target.value.replace(/\s/g, '');
+        let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+        e.target.value = formattedValue;
+    });
+
+    // Only allow numbers for card number and CVV
+    document.getElementById('card_number').addEventListener('keypress', function (e) {
+        if (!/[0-9\s]/.test(e.key)) {
+            e.preventDefault();
+        }
+    });
+
+    document.getElementById('cvv').addEventListener('keypress', function (e) {
+        if (!/[0-9]/.test(e.key)) {
+            e.preventDefault();
+        }
+    });
+
+    // Form validation before submit
+    document.getElementById('paymentForm').addEventListener('submit', function (e) {
+        // If using saved method, skip validation of new card fields
+        const usingNewCard = document.querySelector('input[value=""][name="saved_method_id"]').checked;
+
+        if (usingNewCard) {
+            const cardNumber = document.getElementById('card_number').value.replace(/\s/g, '');
+            if (cardNumber.length < 13 || cardNumber.length > 16) {
+                e.preventDefault();
+                alert('請輸入有效的信用卡號碼（13-16 位數字）');
+                return false;
+            }
+
+            const cvv = document.getElementById('cvv').value;
+            if (cvv.length < 3 || cvv.length > 4) {
+                e.preventDefault();
+                alert('請輸入有效的安全碼（3-4 位數字）');
+                return false;
+            }
+        }
+
+        if (!confirm('確定要進行付款嗎？')) {
+            e.preventDefault();
+            return false;
+        }
+
+        // Show loading state
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 處理中...';
+    });
+</script>
+{% endblock %}

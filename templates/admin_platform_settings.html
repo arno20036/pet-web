@@ -1,0 +1,124 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2><i class="fas fa-cog"></i> 平台設定</h2>
+
+<div class="card" style="max-width: 600px;">
+    <h3 style="margin-top: 0;"><i class="fas fa-percentage"></i> 平台收費比例</h3>
+
+    <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <div style="text-align: center;">
+            <div style="font-size: 3rem; font-weight: bold; color: var(--primary-color);">
+                {{ settings.commission_rate }}%
+            </div>
+            <p style="color: #666; margin: 10px 0 0 0;">當前平台抽成比例</p>
+        </div>
+    </div>
+
+    <div
+        style="background: #eff6ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #3b82f6;">
+        <p style="margin: 0; font-size: 0.9rem; color: #1e40af;">
+            <i class="fas fa-info-circle"></i>
+            <strong>說明：</strong>訓練師完成訂單後，系統會自動計算並發放款項。<br>
+            實際發放金額 = 訂單金額 × (1 - 平台收費比例)
+        </p>
+    </div>
+
+    <form method="post">
+        <div
+            style="background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+            <div style="padding: 15px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-weight: bold;">
+                等級門檻設定 (平均評分)
+            </div>
+            <div style="padding: 15px; display: grid; gap: 15px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>一般 (General)</label>
+                    <input type="text" class="form-control" value="預設" disabled style="background: #f3f4f6;">
+                    <small class="text-muted">起始等級</small>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="level_adv_threshold">高級 (Advanced)</label>
+                    <input type="number" id="level_adv_threshold" name="level_adv_threshold" class="form-control"
+                        min="1" max="5" step="0.1" value="{{ settings.level_adv_threshold|default(4.0) }}" required>
+                    <small class="text-muted">當平均評分達此分數時升級</small>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="level_pro_threshold">專業 (Professional)</label>
+                    <input type="number" id="level_pro_threshold" name="level_pro_threshold" class="form-control"
+                        min="1" max="5" step="0.1" value="{{ settings.level_pro_threshold|default(4.5) }}" required>
+                    <small class="text-muted">當平均評分達此分數時升級</small>
+                </div>
+            </div>
+        </div>
+
+        <div
+            style="background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+            <div style="padding: 15px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-weight: bold;">
+                平台抽成比例設定 (%)
+            </div>
+            <div style="padding: 15px; display: grid; gap: 15px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="commission_general">一般等級抽成</label>
+                    <input type="number" id="commission_general" name="commission_general" class="form-control" min="0"
+                        max="100" step="0.1" value="{{ settings.commission_general|default(15.0) }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="commission_advanced">高級等級抽成</label>
+                    <input type="number" id="commission_advanced" name="commission_advanced" class="form-control"
+                        min="0" max="100" step="0.1" value="{{ settings.commission_advanced|default(10.0) }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="commission_professional">專業等級抽成</label>
+                    <input type="number" id="commission_professional" name="commission_professional"
+                        class="form-control" min="0" max="100" step="0.1"
+                        value="{{ settings.commission_professional|default(5.0) }}" required>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                <i class="fas fa-save"></i> 儲存設定
+            </button>
+        </div>
+    </form>
+</div>
+
+
+
+
+<style>
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .text-muted {
+        display: block;
+        margin-top: 5px;
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,761 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>訂單管理</h2>
+
+<!-- Tabs -->
+<div class="tabs" style="display: flex; gap: 20px; border-bottom: 2px solid #eee; margin-bottom: 20px;">
+    <div onclick="switchTab('ongoing')" id="tab-ongoing"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #666;">
+        進行中的訂單
+        {% if ongoing_orders %}
+        <span class="badge"
+            style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.75rem;">{{
+            ongoing_orders|length }}</span>
+        {% endif %}
+    </div>
+    <div onclick="switchTab('accepted')" id="tab-accepted"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #666;">
+        已接受的訂單
+        {% if accepted_orders %}
+        <span class="badge"
+            style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.75rem;">{{
+            accepted_orders|length }}</span>
+        {% endif %}
+    </div>
+    <div onclick="switchTab('pending')" id="tab-pending"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #666;">
+        待確認訂單
+        {% if pending_orders %}
+        <span class="badge"
+            style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.75rem;">{{
+            pending_orders|length }}</span>
+        {% endif %}
+    </div>
+    <div onclick="switchTab('history')" id="tab-history"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #666;">
+        歷史紀錄
+    </div>
+</div>
+
+<!-- Pending Orders Section -->
+<div id="section-pending" style="display: none;">
+    {% if pending_orders %}
+    {% for order in pending_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #ef4444;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h4 style="margin: 0 0 10px 0;">{{ order.pet_name }} - {{ order.listing_pet_type }} (由 {{
+                    order.buyer_nickname or order.buyer_name }} 預約)</h4>
+                <div style="color: #555; font-size: 0.95rem;">
+                    <p style="margin: 5px 0;"><i class="fas fa-calendar-alt"></i> {{ order.booking_date }} {{
+                        order.time_range }}</p>
+                    <p style="margin: 5px 0;"><i class="fas fa-dollar-sign"></i> 預約金額: ${{ order.total_price }}</p>
+                </div>
+            </div>
+            <!-- Actions -->
+            <div style="display: flex; gap: 10px;">
+                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='accept') }}" method="post"
+                    onsubmit="return confirm('確定接受此訂單？')">
+                    <button type="submit" class="btn btn-success"
+                        style="background-color: #10b981; border: none; color: white;">接受</button>
+                </form>
+                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='reject') }}" method="post"
+                    onsubmit="return confirm('確定拒絕此訂單？')">
+                    <button type="submit" class="btn btn-danger"
+                        style="background-color: #ef4444; border: none; color: white;">拒絕</button>
+                </form>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-ghost btn-sm" onclick="toggleDetails('details-{{ order.id }}')">查看更多詳情 <i
+                        class="fas fa-chevron-down"></i></button>
+                <button class="btn btn-outline btn-sm"
+                    onclick="openBuyerReviews({{ order.buyer_id }}, '{{ order.buyer_nickname or order.buyer_name }}')">
+                    <i class="fas fa-star"></i> 查看買家過去評價
+                </button>
+                <button class="btn btn-outline btn-sm"
+                    onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.buyer_nickname or order.buyer_name }}', {{ order.buyer_id }})"><i
+                        class="fas fa-comment"></i> 聯絡買家</button>
+            </div>
+            <div id="details-{{ order.id }}"
+                style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
+                <div style="display: flex; gap: 15px; align-items: start;">
+                    {% if order.buyer_avatar %}
+                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                        style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
+                    {% else %}
+                    <div
+                        style="width: 50px; height: 50px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-user" style="color: #666;"></i>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <p style="margin: 0 0 5px 0;"><strong>暱稱:</strong> {{ order.buyer_nickname or '未設定' }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>信箱:</strong> {{ order.buyer_email }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>電話:</strong> {{ order.buyer_phone }}</p>
+                        <p style="margin: 0;"><strong>下單時間:</strong> {{ order.created_at }}</p>
+                    </div>
+                </div>
+                <p style="margin-top: 10px;"><i class="fas fa-map-marker-alt"></i> {{ order.location_detail }} ({{
+                    order.location_type }})</p>
+
+                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ddd;">
+                    <button class="btn btn-sm" style="color: #ef4444; border: 1px solid #ef4444; background: white;"
+                        onclick="addToBlacklist({{ order.buyer_id }}, '{{ order.buyer_nickname or order.buyer_name }}')">
+                        <i class="fas fa-ban"></i> 加入黑名單
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="text-align: center; color: #888; padding: 40px;">
+        <i class="fas fa-check-circle" style="font-size: 3rem; color: #d1d5db; margin-bottom: 15px;"></i>
+        <p>目前沒有待確認的訂單</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Accepted Orders Section -->
+<div id="section-accepted" style="display: none;">
+    {% if accepted_orders %}
+    {% for order in accepted_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #3b82f6;"> <!-- Blue -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h4 style="margin: 0 0 10px 0;">{{ order.pet_name }} - {{ order.listing_pet_type }} (由 {{
+                    order.buyer_nickname or order.buyer_name }} 預約)</h4>
+                <div style="color: #555; font-size: 0.95rem;">
+                    <p style="margin: 5px 0;"><i class="fas fa-calendar-alt"></i> {{ order.booking_date }} {{
+                        order.time_range }}</p>
+                    <p style="margin: 5px 0;"><i class="fas fa-dollar-sign"></i> 預約金額: ${{ order.total_price }}</p>
+                </div>
+            </div>
+            <!-- Actions -->
+            <div style="display: flex; gap: 10px;">
+                {% if order.reschedule_request %}
+                <button class="btn" style="background: #f59e0b; border: none; color: white;"
+                    onclick='openRescheduleReview({{ order.id }}, {{ order.reschedule_request|tojson }}, "{{ order.booking_date }} {{ order.time_range }}", {{ order.total_price }})'>
+                    <i class="fas fa-clock"></i> 審核改期
+                </button>
+                {% endif %}
+
+                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='start') }}" method="post"
+                    onsubmit="return confirm('確定開始此行程？')">
+
+                    <!-- ... (end of file) ... -->
+
+
+                    {# Logic Change: Check if fully paid first. A partial refund (modification) shouldn't block the
+                    order if the new price is covered. #}
+                    {% if order.paid_amount is not none and order.paid_amount >= order.total_price %}
+                    <button type="submit" class="btn btn-primary"
+                        style="background-color: #3b82f6; border: none; color: white;">開始行程</button>
+                    {% elif order.payment_status == 'refunded' and (order.paid_amount is none or order.paid_amount == 0)
+                    %}
+                    <button type="button" class="btn btn-secondary" disabled
+                        style="background-color: #ef4444; border: none; color: white; cursor: not-allowed; opacity: 0.7;">已退款</button>
+                    {% else %}
+                    <button type="button" class="btn btn-secondary" disabled
+                        style="background-color: #fbbf24; border: none; color: white; cursor: not-allowed;"
+                        title="買家尚未完成付款 (含補款)">等待付款</button>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-ghost btn-sm" onclick="toggleDetails('details-accepted-{{ order.id }}')">查看更多詳情
+                    <i class="fas fa-chevron-down"></i></button>
+                <button class="btn btn-outline btn-sm"
+                    onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.buyer_nickname or order.buyer_name }}', {{ order.buyer_id }})"><i
+                        class="fas fa-comment"></i> 聯絡買家</button>
+            </div>
+            <div id="details-accepted-{{ order.id }}"
+                style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
+                <div style="display: flex; gap: 15px; align-items: start;">
+                    {% if order.buyer_avatar %}
+                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                        style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
+                    {% else %}
+                    <div
+                        style="width: 50px; height: 50px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-user" style="color: #666;"></i>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <p style="margin: 0 0 5px 0;"><strong>暱稱:</strong> {{ order.buyer_nickname or '未設定' }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>信箱:</strong> {{ order.buyer_email }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>電話:</strong> {{ order.buyer_phone }}</p>
+                    </div>
+                </div>
+                <p style="margin-top: 10px;"><i class="fas fa-map-marker-alt"></i> {{ order.location_detail }} ({{
+                    order.location_type }})</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="text-align: center; color: #888; padding: 40px;">
+        <i class="fas fa-calendar-alt" style="font-size: 3rem; color: #d1d5db; margin-bottom: 15px;"></i>
+        <p>目前沒有等待開始的訂單</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Ongoing Orders Section -->
+<div id="section-ongoing" style="display: none;">
+    {% if ongoing_orders %}
+    {% for order in ongoing_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #10b981;"> <!-- Green -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h4 style="margin: 0 0 10px 0;">{{ order.pet_name }} - {{ order.listing_pet_type }} (由 {{
+                    order.buyer_nickname or order.buyer_name }} 預約)</h4>
+                <div style="color: #555; font-size: 0.95rem;">
+                    <p style="margin: 5px 0;"><i class="fas fa-calendar-alt"></i> {{ order.booking_date }} {{
+                        order.time_range }}</p>
+                    <p style="margin: 5px 0;"><i class="fas fa-clock" style="color: #10b981;"></i> 進行中</p>
+                </div>
+            </div>
+            <!-- Actions -->
+            <div style="display: flex; gap: 10px;">
+                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='complete') }}" method="post"
+                    onsubmit="return confirm('確定完成此行程？請確保服務已結束。')">
+                    <button type="submit" class="btn btn-success"
+                        style="background-color: #10b981; border: none; color: white;">完成行程</button>
+                </form>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-ghost btn-sm" onclick="toggleDetails('details-ongoing-{{ order.id }}')">查看更多詳情 <i
+                        class="fas fa-chevron-down"></i></button>
+                <button class="btn btn-outline btn-sm"
+                    onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.buyer_nickname or order.buyer_name }}', {{ order.buyer_id }})"><i
+                        class="fas fa-comment"></i> 聯絡買家</button>
+            </div>
+            <div id="details-ongoing-{{ order.id }}"
+                style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
+                <div style="display: flex; gap: 15px; align-items: start;">
+                    {% if order.buyer_avatar %}
+                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                        style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
+                    {% else %}
+                    <div
+                        style="width: 50px; height: 50px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-user" style="color: #666;"></i>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <p style="margin: 0 0 5px 0;"><strong>暱稱:</strong> {{ order.buyer_nickname or '未設定' }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>信箱:</strong> {{ order.buyer_email }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>電話:</strong> {{ order.buyer_phone }}</p>
+                    </div>
+                </div>
+                <p style="margin-top: 10px;"><i class="fas fa-map-marker-alt"></i> {{ order.location_detail }} ({{
+                    order.location_type }})</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="text-align: center; color: #888; padding: 40px;">
+        <i class="fas fa-running" style="font-size: 3rem; color: #d1d5db; margin-bottom: 15px;"></i>
+        <p>目前沒有進行中的訂單</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- History Orders Section -->
+<div id="section-history" style="display: none;">
+    {% if history_orders %}
+    <p style="text-align: right; color: #666; font-size: 0.9rem;">共 {{ history_orders|length }} 筆歷史訂單</p>
+    {% for order in history_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #9ca3af;">
+        <div style="display: flex; justify-content: space-between;">
+            <div>
+                <h4 style="margin: 0 0 10px 0;">{{ order.pet_name }} ({{ order.listing_pet_type }})</h4>
+                <p style="margin: 5px 0;">{{ order.booking_date }} {{ order.time_range }}</p>
+            </div>
+            <div style="text-align: right;">
+                {% if order.status == 'completed' %}
+                <span class="badge"
+                    style="background: #e0e7ff; color: #3730a3; padding: 5px 10px; border-radius: 15px;">已完成</span>
+                {% elif order.status == 'rejected' %}
+                <span class="badge"
+                    style="background: #fee2e2; color: #991b1b; padding: 5px 10px; border-radius: 15px;">已拒絕</span>
+                {% elif order.status == 'cancelled' %}
+                <span class="badge"
+                    style="background: #f3f4f6; color: #374151; padding: 5px 10px; border-radius: 15px;">已取消</span>
+                {% else %}
+                <span class="badge"
+                    style="background: #f3f4f6; color: #374151; padding: 5px 10px; border-radius: 15px;">{{ order.status
+                    }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <p style="margin: 5px 0;"><i class="fas fa-dollar-sign"></i> 總金額: ${{ order.total_price }}</p>
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-ghost btn-sm" onclick="toggleDetails('details-history-{{ order.id }}')">查看詳情 <i
+                        class="fas fa-chevron-down"></i></button>
+                <button class="btn btn-outline btn-sm"
+                    onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.buyer_nickname or order.buyer_name }}', {{ order.buyer_id }})"><i
+                        class="fas fa-comment"></i> 歷史訊息</button>
+
+                {% if order.status == 'completed' %}
+                {% if order.has_reviewed %}
+                <span class="badge" style="background: #e5e7eb; color: #6b7280; padding: 5px 12px; border-radius: 6px;">
+                    <i class="fas fa-check"></i> 已評價
+                </span>
+                {% else %}
+                <button class="btn btn-sm" style="background: #fbbf24; color: white; border: none;"
+                    onclick="openReviewModal({{ order.id }})">
+                    <i class="fas fa-star"></i> 評價買家
+                </button>
+                {% endif %}
+                {% endif %}
+            </div>
+            <div id="details-history-{{ order.id }}"
+                style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
+                <div style="display: flex; gap: 15px; align-items: start;">
+                    {% if order.buyer_avatar %}
+                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                        style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
+                    {% else %}
+                    <div
+                        style="width: 50px; height: 50px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-user" style="color: #666;"></i>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <p style="margin: 0 0 5px 0;"><strong>暱稱:</strong> {{ order.buyer_nickname or '未設定' }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>信箱:</strong> {{ order.buyer_email }}</p>
+                        <p style="margin: 0 0 5px 0;"><strong>電話:</strong> {{ order.buyer_phone }}</p>
+                    </div>
+                </div>
+                <p style="margin-top: 10px;"><i class="fas fa-map-marker-alt"></i> {{ order.location_detail }} ({{
+                    order.location_type }})</p>
+
+                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ddd;">
+                    <button class="btn btn-sm" style="color: #ef4444; border: 1px solid #ef4444; background: white;"
+                        onclick="addToBlacklist({{ order.buyer_id }}, '{{ order.buyer_nickname or order.buyer_name }}')">
+                        <i class="fas fa-ban"></i> 加入黑名單
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="text-align: center; color: #888; padding: 20px;">暫無歷史訂單</p>
+    {% endif %}
+</div>
+
+<!-- Submit Review Modal -->
+<div id="reviewModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px;">
+        <h3 style="margin-top: 0;">評價買家</h3>
+        <form id="reviewForm">
+            <input type="hidden" id="reviewOrderId">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">評分</label>
+                <div class="star-rating" style="font-size: 1.5rem; color: #ddd; cursor: pointer;">
+                    <i class="fas fa-star" data-rating="1"></i>
+                    <i class="fas fa-star" data-rating="2"></i>
+                    <i class="fas fa-star" data-rating="3"></i>
+                    <i class="fas fa-star" data-rating="4"></i>
+                    <i class="fas fa-star" data-rating="5"></i>
+                </div>
+                <input type="hidden" id="ratingValue" required>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">評論內容 (選填)</label>
+                <textarea id="reviewComment"
+                    style="width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 6px;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn btn-outline" onclick="closeReviewModal()">取消</button>
+                <button type="submit" class="btn btn-primary">送出評價</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Buyer Reviews Modal -->
+<div id="buyerReviewsModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div
+        style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0;">買家評價紀錄</h3>
+            <button onclick="closeBuyerReviewsModal()"
+                style="background: none; border: none; font-size: 1.2rem; cursor: pointer;">&times;</button>
+        </div>
+        <div id="buyerReviewsList" style="overflow-y: auto; flex: 1;">
+            <!-- Content loaded via JS -->
+            <p style="text-align: center; color: #888;">載入中...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tabName) {
+        document.querySelectorAll('[id^="section-"]').forEach(el => el.style.display = 'none');
+        document.getElementById('section-' + tabName).style.display = 'block';
+
+        document.querySelectorAll('[id^="tab-"]').forEach(el => {
+            el.style.borderBottom = '3px solid transparent';
+            el.style.color = '#666';
+        });
+        const activeTab = document.getElementById('tab-' + tabName);
+        activeTab.style.borderBottom = '3px solid var(--primary-color)';
+        activeTab.style.color = 'var(--primary-color)';
+    }
+
+    function toggleDetails(id) {
+        const el = document.getElementById(id);
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // --- Submit Review Logic ---
+    const modal = document.getElementById('reviewModal');
+    const stars = document.querySelectorAll('.star-rating i');
+    const ratingInput = document.getElementById('ratingValue');
+
+    function openReviewModal(orderId) {
+        document.getElementById('reviewOrderId').value = orderId;
+        ratingInput.value = '';
+        document.getElementById('reviewComment').value = '';
+        updateStars(0);
+        modal.style.display = 'flex';
+    }
+
+    function closeReviewModal() {
+        modal.style.display = 'none';
+    }
+
+    stars.forEach(star => {
+        star.addEventListener('click', function () {
+            const rating = this.dataset.rating;
+            ratingInput.value = rating;
+            updateStars(rating);
+        });
+
+        star.addEventListener('mouseover', function () {
+            updateStars(this.dataset.rating, true);
+        });
+
+        star.addEventListener('mouseout', function () {
+            updateStars(ratingInput.value || 0);
+        });
+    });
+
+    function updateStars(rating, isHover = false) {
+        stars.forEach(star => {
+            if (star.dataset.rating <= rating) {
+                star.style.color = '#fbbf24';
+            } else {
+                star.style.color = '#ddd';
+            }
+        });
+    }
+
+    document.getElementById('reviewForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const orderId = document.getElementById('reviewOrderId').value;
+        const rating = ratingInput.value;
+        const comment = document.getElementById('reviewComment').value;
+
+        if (!rating) {
+            alert('請選擇評分星數');
+            return;
+        }
+
+        if (!confirm('送出後將無法修改，確定要送出評價嗎？')) {
+            return;
+        }
+
+        fetch('/api/reviews', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: orderId, rating: rating, comment: comment })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('評價提交成功！');
+                    closeReviewModal();
+                    window.location.reload();
+                } else {
+                    alert(data.error || '提交失敗');
+                }
+            });
+    });
+
+    // --- View Buyer Reviews Logic ---
+    const reviewsModal = document.getElementById('buyerReviewsModal');
+    const reviewsList = document.getElementById('buyerReviewsList');
+
+    function openBuyerReviews(userId, name) {
+        reviewsModal.style.display = 'flex';
+        reviewsList.innerHTML = '<p style="text-align: center; color: #888;">載入中...</p>';
+
+        fetch(`/api/users/${userId}/reviews`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.reviews && data.reviews.length > 0) {
+                    let html = '';
+                    data.reviews.forEach(r => {
+                        const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+                        html += `
+                            <div style="padding: 15px; border-bottom: 1px solid #eee;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <strong style="color: #fbbf24;">${stars}</strong>
+                                    <span style="color: #888; font-size: 0.85rem;">${r.created_at}</span>
+                                </div>
+                                <div style="font-size: 0.9rem; margin-bottom: 5px;">
+                                    <span style="color: #666;">來自: ${r.reviewer_nickname || r.reviewer_name}</span>
+                                </div>
+                                <p style="margin: 5px 0; color: #444;">${r.comment || '無評語'}</p>
+                            </div>
+                        `;
+                    });
+                    reviewsList.innerHTML = html;
+                } else {
+                    reviewsList.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">此買家尚無評價紀錄</p>';
+                }
+            })
+            .catch(e => {
+                reviewsList.innerHTML = '<p style="text-align: center; color: #ef4444;">載入失敗</p>';
+            });
+    }
+
+    function closeBuyerReviewsModal() {
+        reviewsModal.style.display = 'none';
+    }
+
+    // URL Parameter Handling
+    window.onload = function () {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tab = urlParams.get('tab');
+        const orderId = urlParams.get('id');
+
+        if (tab && ['pending', 'accepted', 'ongoing', 'history'].includes(tab)) {
+            switchTab(tab);
+        } else {
+            switchTab('ongoing');
+        }
+
+        if (orderId && tab) {
+            // Determine details ID based on tab naming convention
+            let detailsId = '';
+            if (tab === 'pending') detailsId = 'details-' + orderId;
+            else if (tab === 'accepted') detailsId = 'details-accepted-' + orderId;
+            else if (tab === 'ongoing') detailsId = 'details-ongoing-' + orderId;
+            else if (tab === 'history') detailsId = 'details-history-' + orderId;
+
+            const detailsEl = document.getElementById(detailsId);
+            if (detailsEl) {
+                // Find parent card
+                const card = detailsEl.closest('.card');
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.style.transition = 'box-shadow 0.5s';
+                    card.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.5)';
+                    setTimeout(() => {
+                        card.style.boxShadow = 'none';
+                    }, 2000);
+                    // Open details
+                    detailsEl.style.display = 'block';
+                }
+            }
+        }
+
+        // Check for overlap warning flash message
+        checkOverlapWarning();
+    }
+
+    function checkOverlapWarning() {
+        // Look for flash messages containing OVERLAP_WARNING
+        const flashes = document.querySelectorAll('.flash');
+        flashes.forEach(flash => {
+            const text = flash.textContent || flash.innerText;
+            if (text.includes('OVERLAP_WARNING::')) {
+                // Parse the message: OVERLAP_WARNING::orderId::conflictInfo
+                const parts = text.split('::');
+                if (parts.length >= 3) {
+                    const orderId = parts[1];
+                    const conflictInfo = parts.slice(2).join('::');
+
+                    // Hide the original flash message
+                    flash.style.display = 'none';
+
+                    // Show custom confirmation dialog
+                    showOverlapConfirmation(orderId, conflictInfo);
+                }
+            }
+        });
+    }
+
+    function showOverlapConfirmation(orderId, conflictInfo) {
+        const modal = document.getElementById('overlapModal');
+        const infoEl = document.getElementById('overlapConflictInfo');
+        const formEl = document.getElementById('overlapForceForm');
+
+        infoEl.textContent = conflictInfo;
+        formEl.action = `/trainer/order/${orderId}/accept?force=1`;
+        modal.style.display = 'flex';
+    }
+
+    function hideOverlapModal() {
+        document.getElementById('overlapModal').style.display = 'none';
+    }
+
+    function addToBlacklist(consumerId, consumerName) {
+        if (!confirm(`確定要將 "${consumerName}" 加入黑名單嗎？\n加入後，對方將無法查看您的刊登與傳送訊息，您也無法收到對方的訂單。`)) {
+            return;
+        }
+
+        fetch('/api/blacklist/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ consumer_id: consumerId })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('已成功加入黑名單');
+                    // Optional: reload or hide related orders
+                } else {
+                    alert('加入黑名單失敗: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('發生錯誤');
+            });
+    }
+</script>
+
+<!-- Overlap Warning Modal -->
+<div id="overlapModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: #f59e0b;"></i>
+            <h3 style="margin: 15px 0 10px 0; color: #92400e;">時段重疊警告</h3>
+        </div>
+        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <p style="margin: 0 0 10px 0; color: #92400e; font-weight: 600;">此訂單與以下時段重疊：</p>
+            <p id="overlapConflictInfo" style="margin: 0; color: #78350f;"></p>
+        </div>
+        <p style="color: #666; font-size: 0.9rem; margin-bottom: 20px;">
+            如果您確定要接受此訂單，請點擊「仍要接受」。這可能導致同一時間有多個預約。
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn btn-outline" onclick="hideOverlapModal()">取消</button>
+            <form id="overlapForceForm" method="post" style="margin: 0;">
+                <button type="submit" class="btn" style="background: #f59e0b; color: white; border: none;">
+                    <i class="fas fa-check"></i> 仍要接受
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- Reschedule Review Modal -->
+<div id="rescheduleReviewModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1002; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;">
+        <h3 style="margin-top: 0; color: #f59e0b;">審核改期申請</h3>
+        <p style="color: #666; margin-bottom: 20px;">消費者申請變更預約時間，請確認是否同意。</p>
+
+        <input type="hidden" id="reviewReschOrderId">
+
+        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+            <div style="flex: 1; background: #f9fafb; padding: 10px; border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #6b7280;">原定時間</h4>
+                <p id="reviewReschOldTime" style="margin: 0; font-weight: bold; font-size: 1rem;">
+                </p>
+            </div>
+            <div style="flex: 1; background: #fffbeb; padding: 10px; border-radius: 8px; border: 1px solid #fcd34d;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #b45309;">申請變更為</h4>
+                <p id="reviewReschNewTime" style="margin: 0; font-weight: bold; font-size: 1rem; color: #b45309;"></p>
+            </div>
+        </div>
+
+        <div id="reviewReschPriceDiff" style="margin-bottom: 25px; font-weight: bold; text-align: right;"></div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn btn-outline" style="border-color: #ddd; color: #666;"
+                onclick="closeRescheduleReview()">取消</button>
+            <button class="btn btn-danger" style="background: #ef4444; border: none; color: white;"
+                onclick="respondReschedule('reject')">拒絕申請</button>
+            <button class="btn btn-success" style="background: #10b981; border: none; color: white;"
+                onclick="respondReschedule('approve')">同意變更</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openRescheduleReview(orderId, request, oldTimeStr, oldPrice) {
+        document.getElementById('reviewReschOrderId').value = orderId;
+        document.getElementById('reviewReschOldTime').textContent = oldTimeStr;
+
+        // Calculate new end time for display
+        const startH = parseInt(request.new_time.split(':')[0]);
+        const endH = startH + request.new_duration;
+        const newTimeRange = `${request.new_time} - ${endH}:00`;
+        document.getElementById('reviewReschNewTime').textContent = `${request.new_date} ${newTimeRange}`;
+
+        const priceDiffEl = document.getElementById('reviewReschPriceDiff');
+        const newPrice = oldPrice + request.price_diff;
+
+        if (request.price_diff > 0) {
+            priceDiffEl.innerHTML = `<span style="color: #10b981;">修改後的訂單金額: $${newPrice}</span>`;
+        } else if (request.price_diff < 0) {
+            priceDiffEl.innerHTML = `<span style="color: #ef4444;">修改後的訂單金額: $${newPrice}</span>`;
+        } else {
+            priceDiffEl.innerHTML = `<span style="color: #333;">修改後的訂單金額: $${newPrice}</span>`;
+        }
+
+        document.getElementById('rescheduleReviewModal').style.display = 'flex';
+    }
+
+    function closeRescheduleReview() {
+        document.getElementById('rescheduleReviewModal').style.display = 'none';
+    }
+
+    function respondReschedule(action) {
+        if (!confirm(action === 'approve' ? '確定同意此改期申請？' : '確定拒絕此申請？')) return;
+
+        const orderId = document.getElementById('reviewReschOrderId').value;
+
+        fetch(`/api/order/${orderId}/reschedule/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message || '操作成功');
+                    window.location.reload();
+                } else {
+                    alert(data.error || '操作失敗');
+                }
+            });
+    }
+</script>
+
+{% endblock %}

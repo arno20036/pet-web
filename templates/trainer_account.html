@@ -1,0 +1,291 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2><i class="fas fa-wallet"></i> 我的帳戶</h2>
+
+<!-- Account Overview -->
+<div
+    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+    <div class="card"
+        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px;">
+        <h3 style="margin-top: 0; font-size: 0.85rem; opacity: 0.9;">當前餘額</h3>
+        <div style="font-size: 1.8rem; font-weight: bold; margin: 8px 0;">${{ "%.2f"|format(account.balance) }}</div>
+        <p style="margin: 0 0 15px 0; font-size: 0.8rem; opacity: 0.8;">可提領金額</p>
+        <a href="{{ url_for('trainer_withdrawal') }}" class="btn"
+            style="background: white; color: #667eea; padding: 8px 16px; border-radius: 6px; text-decoration: none; display: inline-block; font-size: 0.9rem; font-weight: 600;">
+            <i class="fas fa-hand-holding-usd"></i> 申請提領
+        </a>
+    </div>
+
+    <div class="card"
+        style="background: linear-gradient(135deg, #0d9488 0%, #047857 100%); color: white; padding: 20px;">
+        <h3 style="margin-top: 0; font-size: 0.85rem; opacity: 0.9;">平台等級與抽成</h3>
+        <div style="font-size: 1.5rem; font-weight: bold; margin: 8px 0;">
+            {% if current_level == 'professional' %}
+            <i class="fas fa-crown"></i> 專業訓練師
+            {% elif current_level == 'advanced' %}
+            <i class="fas fa-medal"></i> 高級訓練師
+            {% else %}
+            <i class="fas fa-user"></i> 一般訓練師
+            {% endif %}
+            <span style="font-size: 1rem; opacity: 0.9;">({{ commission_rate }}%)</span>
+        </div>
+        <p style="margin: 0 0 15px 0; font-size: 0.8rem; opacity: 0.8;">平台抽成比例</p>
+        <div style="display: flex; gap: 8px;">
+            <a href="{{ url_for('trainer_reviews_history') }}" class="btn"
+                style="background: rgba(255,255,255,0.2); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; display: inline-block; font-size: 0.85rem;">
+                <i class="fas fa-star"></i> 查看歷史評價
+            </a>
+            <a href="{{ url_for('trainer_level_history') }}" class="btn"
+                style="background: rgba(255,255,255,0.2); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; display: inline-block; font-size: 0.85rem;">
+                <i class="fas fa-history"></i> 查看等級變化
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs Navigation -->
+<div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+    <div class="tab active" onclick="switchTab('transactions')" id="tab-transactions"
+        style="padding: 12px 24px; cursor: pointer; font-weight: 600; color: #3b82f6; border-bottom: 2px solid #3b82f6; margin-bottom: -2px; transition: all 0.2s ease;">
+        <i class="fas fa-history"></i> 交易記錄
+    </div>
+    <div class="tab" onclick="switchTab('withdrawals')" id="tab-withdrawals"
+        style="padding: 12px 24px; cursor: pointer; font-weight: 600; color: #4b5563; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s ease;">
+        <i class="fas fa-file-invoice-dollar"></i> 提領申請紀錄
+    </div>
+</div>
+
+<!-- Transaction History Tab Content -->
+<div id="content-transactions" style="display: block;">
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-history"></i> 交易記錄
+            </h3>
+
+            <form action="{{ url_for('trainer_account') }}" method="get"
+                style="display: flex; align-items: center; gap: 5px;">
+                <label for="date-filter" style="margin: 0; font-size: 0.9rem; color: #666;">篩選日期：</label>
+                <input type="date" id="date-filter" name="date" value="{{ selected_date or '' }}" class="form-control"
+                    style="width: auto; padding: 5px 10px; height: 38px;" onchange="this.form.submit()">
+            </form>
+        </div>
+
+        {% if transactions %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead style="background: #f9fafb;">
+                    <tr>
+                        <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">日期</th>
+                        <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">訂單</th>
+                        <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">說明</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e5e7eb;">訂單金額</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e5e7eb;">平台費用</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e5e7eb;">實際收入</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e5e7eb;">帳戶餘額</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr style="border-bottom: 1px solid #f0f0f0;">
+                        <td style="padding: 12px;">{{ (transaction.created_at | utc8)[:10] }}</td>
+                        <td style="padding: 12px;">
+                            {% if transaction.order_id %}
+                            <span style="color: var(--primary-color); font-weight: 600;">#{{ transaction.order_id
+                                }}</span>
+                            {% if transaction.booking_date %}
+                            <div style="font-size: 0.85rem; color: #666;">{{ transaction.booking_date }} {{
+                                transaction.booking_time }}</div>
+                            {% endif %}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td style="padding: 12px;">{{ transaction.description }}</td>
+                        <td style="padding: 12px; text-align: right; color: #666;">
+                            {% if transaction.original_amount %}
+                            ${{ "%.2f"|format(transaction.original_amount) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td style="padding: 12px; text-align: right; color: #ef4444;">
+                            {% if transaction.commission %}
+                            -${{ "%.2f"|format(transaction.commission) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td style="padding: 12px; text-align: right;">
+                            {% if transaction.amount > 0 %}
+                            <span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">
+                                +${{ "%.2f"|format(transaction.amount) }}
+                            </span>
+                            {% else %}
+                            <span style="color: #ef4444; font-weight: 600; font-size: 1.1rem;">
+                                -${{ "%.2f"|format(transaction.amount|abs) }}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 12px; text-align: right; font-weight: 600; color: #4b5563;">
+                            ${{ "%.2f"|format(transaction.balance_after) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 60px 20px; color: #888;">
+            <i class="fas fa-receipt" style="font-size: 4rem; color: #ddd; margin-bottom: 20px;"></i>
+            <p style="font-size: 1.1rem;">尚無交易記錄</p>
+            <p style="font-size: 0.9rem;">完成訂單後，收入會自動發放至您的帳戶</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Withdrawal Requests Tab Content -->
+<div id="content-withdrawals" style="display: none;">
+    <div class="card">
+        <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-file-invoice-dollar"></i> 提領申請紀錄
+            </h3>
+
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <label for="withdrawal-date-filter" style="margin: 0; font-size: 0.9rem; color: #666;">篩選日期：</label>
+                <input type="date" id="withdrawal-date-filter" class="form-control"
+                    style="width: auto; padding: 5px 10px; height: 38px;" onchange="filterWithdrawals()">
+            </div>
+        </div>
+
+        {% if withdrawal_requests %}
+        <div id="withdrawal-list" style="display: grid; gap: 15px;">
+            {% for req in withdrawal_requests %}
+            <div class="withdrawal-item" data-date="{{ (req.created_at | utc8)[:10] }}"
+                style="background: #f9fafb; padding: 16px; border-radius: 10px; border-left: 4px solid 
+                {% if req.status == 'pending' %}#f59e0b{% elif req.status == 'approved' %}#10b981{% else %}#ef4444{% endif %};">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <div style="font-weight: 600; font-size: 1.1rem; color: #374151;">
+                            提領金額：<span style="color: #ef4444;">${{ "%.2f"|format(req.amount) }}</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 5px;">
+                            申請時間：{{ req.created_at | utc8 }}
+                        </div>
+                    </div>
+                    <div>
+                        {% if req.status == 'pending' %}
+                        <span
+                            style="background: #fef3c7; color: #92400e; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                            <i class="fas fa-clock"></i> 審核中
+                        </span>
+                        {% elif req.status == 'approved' %}
+                        <span
+                            style="background: #d1fae5; color: #065f46; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                            <i class="fas fa-check-circle"></i> 已核准
+                        </span>
+                        {% else %}
+                        <span
+                            style="background: #fee2e2; color: #991b1b; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                            <i class="fas fa-times-circle"></i> 已拒絕
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if req.status != 'pending' %}
+                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                    <div style="font-size: 0.85rem; color: #666;">
+                        <strong>處理時間：</strong>{{ req.processed_at | utc8 if req.processed_at else '-' }}
+                    </div>
+                    {% if req.admin_note %}
+                    <div style="font-size: 0.85rem; color: #666; margin-top: 5px;">
+                        <strong>備註：</strong>{{ req.admin_note }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <div style="margin-top: 10px; font-size: 0.85rem; color: #888;">
+                    <strong>銀行：</strong>{{ req.bank_name }} |
+                    <strong>帳號：</strong>{{ req.bank_account }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 40px 20px; color: #888;">
+            <i class="fas fa-file-invoice" style="font-size: 3rem; color: #ddd; margin-bottom: 15px;"></i>
+            <p style="font-size: 1rem; margin: 0;">尚無提領申請紀錄</p>
+            <p style="font-size: 0.85rem; margin-top: 8px;">
+                點擊上方「申請提領」按鈕來提領您的餘額
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    table th {
+        font-weight: 600;
+        color: #374151;
+        font-size: 0.9rem;
+    }
+
+    table tbody tr:hover {
+        background: #f9fafb;
+    }
+
+    .tab:hover {
+        background: #f9fafb;
+        border-radius: 8px 8px 0 0;
+    }
+</style>
+
+<script>
+    function switchTab(tabName) {
+        // Hide all content
+        document.getElementById('content-transactions').style.display = 'none';
+        document.getElementById('content-withdrawals').style.display = 'none';
+
+        // Reset all tabs
+        document.getElementById('tab-transactions').style.color = '#4b5563';
+        document.getElementById('tab-transactions').style.borderBottomColor = 'transparent';
+        document.getElementById('tab-withdrawals').style.color = '#4b5563';
+        document.getElementById('tab-withdrawals').style.borderBottomColor = 'transparent';
+
+        // Show selected content and activate tab
+        document.getElementById('content-' + tabName).style.display = 'block';
+        const activeTab = document.getElementById('tab-' + tabName);
+        activeTab.style.color = '#3b82f6';
+        activeTab.style.borderBottomColor = '#3b82f6';
+    }
+
+    function filterWithdrawals() {
+        const filterDate = document.getElementById('withdrawal-date-filter').value;
+        const items = document.querySelectorAll('.withdrawal-item');
+
+        items.forEach(function (item) {
+            const itemDate = item.getAttribute('data-date');
+            if (!filterDate || itemDate === filterDate) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    function clearWithdrawalFilter() {
+        document.getElementById('withdrawal-date-filter').value = '';
+        const items = document.querySelectorAll('.withdrawal-item');
+        items.forEach(function (item) {
+            item.style.display = 'block';
+        });
+    }
+</script>
+{% endblock %}

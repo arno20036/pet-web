@@ -1,0 +1,132 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>黑名單管理</h2>
+
+<div class="card">
+    <div style="margin-bottom: 20px;">
+        <p style="color: #666;">
+            <i class="fas fa-info-circle"></i> 被加入黑名單的消費者將無法查看您的刊登內容，也無法透過聊天室與您聯繫。
+        </p>
+    </div>
+
+    {% if blacklist %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>消費者</th>
+                    <th>加入時間</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in blacklist %}
+                <tr id="blacklist-row-{{ item['consumer_id'] }}">
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            {% if item['avatar'] %}
+                            <img src="{{ url_for('uploaded_file', filename=item['avatar']) }}"
+                                style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                            {% else %}
+                            <div
+                                style="width: 40px; height: 40px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-user" style="color: #666;"></i>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <div style="font-weight: 600;">{{ item['nickname'] or item['name'] }}</div>
+                                <div style="font-size: 0.85rem; color: #888;">{{ item['email'] }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>{{ item['created_at']|utc8 }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="removeFromBlacklist({{ item['consumer_id'] }})">
+                            <i class="fas fa-trash-alt"></i> 移除
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #888;">
+        <i class="fas fa-user-slash" style="font-size: 3rem; margin-bottom: 20px; color: #ddd;"></i>
+        <p>目前黑名單中沒有資料</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function removeFromBlacklist(consumerId) {
+        if (!confirm('確定要將此消費者移出黑名單嗎？')) {
+            return;
+        }
+
+        fetch('/api/blacklist/remove', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ consumer_id: consumerId })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('已移出黑名單');
+                    const row = document.getElementById('blacklist-row-' + consumerId);
+                    if (row) {
+                        row.remove();
+
+                        // Check if table empty
+                        const tbody = document.querySelector('tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            location.reload();
+                        }
+                    }
+                } else {
+                    alert('操作失敗: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('發生錯誤，請稍後再試');
+            });
+    }
+</script>
+
+<style>
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table th,
+    .table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+
+    .table th {
+        background-color: #f9fafb;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .btn-danger {
+        background-color: #ef4444;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    .btn-danger:hover {
+        background-color: #dc2626;
+    }
+</style>
+{% endblock %}

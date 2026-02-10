@@ -1,0 +1,88 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2><i class="fas fa-star"></i> 歷史評價紀錄</h2>
+
+<!-- Stats Overview -->
+<div class="card" style="margin-bottom: 20px;">
+    <div style="display: flex; gap: 30px; align-items: center;">
+        <div style="text-align: center;">
+            <div style="font-size: 3rem; font-weight: bold; color: #fbbf24;">
+                {{ "%.1f"|format(avg_rating) }}
+            </div>
+            <div style="color: #666; font-size: 0.9rem;">平均評分</div>
+        </div>
+        <div style="flex: 1; border-left: 1px solid #eee; padding-left: 30px;">
+            <h3 style="margin: 0 0 5px 0;">總評價數</h3>
+            <div style="font-size: 1.5rem; font-weight: bold;">{{ total_reviews }} <span
+                    style="font-size: 1rem; font-weight: normal; color: #666;">筆</span></div>
+            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: #666;">
+                評價分數越高品質越好，平均分數達標可升級以降低平台抽成。
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Reviews List -->
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0;"><i class="fas fa-comments"></i> 評價列表</h3>
+
+        <form action="{{ url_for('trainer_reviews_history') }}" method="get"
+            style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <label for="date-filter" style="margin: 0; font-size: 0.9rem; color: #666;">篩選日期：</label>
+                <input type="date" id="date-filter" name="date" value="{{ filter_date or '' }}" class="form-control"
+                    style="width: auto; padding: 5px 10px; height: 38px;" onchange="this.form.submit()">
+            </div>
+            {% if filter_date %}
+            <a href="{{ url_for('trainer_reviews_history') }}" class="btn btn-ghost"
+                style="padding: 5px 10px; font-size: 0.9rem; height: 38px; display: flex; align-items: center;">
+                <i class="fas fa-times"></i> 清除
+            </a>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if reviews %}
+    <div style="display: grid; gap: 15px;">
+        {% for review in reviews %}
+        <div style="border-bottom: 1px solid #eee; padding-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <img src="{{ url_for('uploaded_file', filename=review.buyer_avatar) if review.buyer_avatar else url_for('static', filename='default_avatar.png') }}"
+                        alt="Avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                    <div>
+                        <div style="font-weight: 600;">{{ review.buyer_nickname or review.buyer_name }}</div>
+                        <div style="font-size: 0.85rem; color: #999;">{{ review.created_at | utc8 }}</div>
+                    </div>
+                </div>
+                <div style="color: #fbbf24; font-size: 1.1rem;">
+                    {% for i in range(review.rating) %}<i class="fas fa-star"></i>{% endfor %}
+                    {% for i in range(5 - review.rating) %}<i class="far fa-star"></i>{% endfor %}
+                </div>
+            </div>
+            {% if review.comment %}
+            <div style="background: #f9fafb; padding: 10px; border-radius: 6px; color: #4b5563;">
+                {{ review.comment }}
+            </div>
+            {% endif %}
+            <div style="margin-top: 5px; font-size: 0.8rem; color: #999;">
+                訂單編號: #{{ review.order_id }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #888;">
+        暫無評價紀錄
+    </div>
+    {% endif %}
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="{{ url_for('trainer_account') }}" class="btn btn-ghost">
+        <i class="fas fa-arrow-left"></i> 返回帳戶
+    </a>
+</div>
+{% endblock %}

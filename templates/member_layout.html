@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}會員中心 - 寵物陪伴刊登平台{% endblock %}
+
+{% block content %}
+<div class="member-container">
+        <div class="member-sidebar">
+                <h3>會員中心</h3>
+                <ul>
+                        <li class="menu-category">一般功能</li>
+                        <li><a href="{{ url_for('member_profile') }}"
+                                        class="{{ 'active' if active_page == 'profile' else '' }}">設定會員資料</a></li>
+                        <li><a href="{{ url_for('member_orders') }}"
+                                        class="{{ 'active' if active_page == 'orders' else '' }}">訂單查詢
+                                        {% if sidebar_counts.get('member_badge_count', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['member_badge_count'] }}</span>
+                                        {% endif %}
+                                </a></li>
+
+                        {% if session.get('user_role') == 'member' %}
+                        <li><a href="{{ url_for('member_apply_trainer') }}"
+                                        class="{{ 'active' if active_page == 'apply_trainer' else '' }}">申請訓練師資格</a>
+                        </li>
+                        {% endif %}
+
+                        {% if session.get('user_role') == 'trainer' %}
+                        <li class="menu-category">訓練師專區</li>
+                        <li><a href="{{ url_for('trainer_calendar') }}"
+                                        class="{{ 'active' if active_page == 'calendar' else '' }}">行事曆
+                                        {% if sidebar_counts.get('trainer_calendar_count', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['trainer_calendar_count']
+                                                }}</span>
+                                        {% endif %}
+                                </a></li>
+                        <li><a href="{{ url_for('trainer_create_listing') }}"
+                                        class="{{ 'active' if active_page == 'create_listing' else '' }}">刊登</a></li>
+                        <li><a href="{{ url_for('trainer_manage_listings') }}"
+                                        class="{{ 'active' if active_page == 'manage_listings' else '' }}">管理刊登內容</a>
+                        </li>
+                        <li><a href="{{ url_for('trainer_orders') }}"
+                                        class="{{ 'active' if active_page == 'trainer_orders' else '' }}">訂單管理
+                                        {% if sidebar_counts.get('trainer_badge_count', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['trainer_badge_count']
+                                                }}</span>
+                                        {% endif %}
+                                </a></li>
+                        <li><a href="{{ url_for('trainer_blacklist') }}"
+                                        class="{{ 'active' if active_page == 'blacklist' else '' }}">黑名單管理</a></li>
+                        <li><a href="{{ url_for('trainer_account') }}"
+                                        class="{{ 'active' if active_page == 'trainer_account' else '' }}">平台帳戶</a></li>
+                        {% endif %}
+
+                        {% if session.get('user_role') == 'admin' %}
+                        <li class="menu-category">管理員專區</li>
+                        <li><a href="{{ url_for('admin_listing_review') }}"
+                                        class="{{ 'active' if active_page == 'listing_review' else '' }}">刊登申請審核
+                                        {% if sidebar_counts.get('admin_pending_listings', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['admin_pending_listings']
+                                                }}</span>
+                                        {% endif %}
+                                </a>
+                        </li>
+                        <li><a href="{{ url_for('admin_listing_modification_review') }}"
+                                        class="{{ 'active' if active_page == 'listing_modification_review' else '' }}">刊登修改審核
+                                        {% if sidebar_counts.get('admin_pending_modifications', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['admin_pending_modifications']
+                                                }}</span>
+                                        {% endif %}
+                                </a>
+                        </li>
+                        <li><a href="{{ url_for('admin_trainer_review') }}"
+                                        class="{{ 'active' if active_page == 'trainer_review' else '' }}">訓練師申請審核
+                                        {% if sidebar_counts.get('admin_pending_trainers', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['admin_pending_trainers']
+                                                }}</span>
+                                        {% endif %}
+                                </a>
+                        </li>
+                        <li><a href="{{ url_for('admin_order_tracking') }}"
+                                        class="{{ 'active' if active_page == 'order_tracking' else '' }}">查看訂單流程進度
+                                        {% if sidebar_counts.get('admin_pending_payments', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['admin_pending_payments']
+                                                }}</span>
+                                        {% endif %}
+                                </a>
+                        </li>
+                        <li><a href="{{ url_for('admin_withdrawal_requests') }}"
+                                        class="{{ 'active' if active_page == 'withdrawal_requests' else '' }}">餘額提領申請
+                                        {% if sidebar_counts.get('admin_pending_withdrawals', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['admin_pending_withdrawals']
+                                                }}</span>
+                                        {% endif %}
+                                </a>
+                        </li>
+                        <li><a href="{{ url_for('admin_refunds') }}"
+                                        class="{{ 'active' if active_page == 'refunds' else '' }}">補款/退款管理
+                                        {% if sidebar_counts.get('admin_pending_refunds', 0) > 0 %}
+                                        <span class="sidebar-badge">{{ sidebar_counts['admin_pending_refunds']
+                                                }}</span>
+                                        {% endif %}
+                                </a>
+                        </li>
+                        <li><a href="{{ url_for('admin_appeals') }}"
+                                        class="{{ 'active' if active_page == 'appeals' else '' }}">申訴查詢</a></li>
+                        <li><a href="{{ url_for('admin_member_management') }}"
+                                        class="{{ 'active' if active_page == 'member_management' else '' }}">會員資料管理</a>
+                        </li>
+                        <li><a href="{{ url_for('admin_fee_settings') }}"
+                                        class="{{ 'active' if active_page == 'fee_settings' else '' }}">平台相關設定</a>
+                        </li>
+                        <li><a href="{{ url_for('admin_statistics_dashboard') }}"
+                                        class="{{ 'active' if active_page == 'statistics' else '' }}">統計中心</a>
+                        </li>
+                        {% endif %}
+                </ul>
+        </div>
+        <div class="member-content">
+                {% block member_content %}{% endblock %}
+
+        </div>
+</div>
+
+<style>
+        .member-sidebar ul li a {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-right: 15px;
+        }
+
+        .sidebar-badge {
+                background-color: #ef4444;
+                color: white;
+                font-size: 0.75rem;
+                padding: 2px 8px;
+                border-radius: 999px;
+                font-weight: 700;
+                margin-left: 10px;
+                line-height: 1;
+                min-width: 20px;
+                text-align: center;
+                flex-shrink: 0;
+                /* Prevent shrinking */
+        }
+</style>
+
+<!-- Back to Top Button -->
+<button id="backToTopBtn" onclick="scrollToTop()" style="position: fixed; bottom: 30px; left: 30px; width: 50px; height: 50px; border-radius: 50%; 
+           background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; 
+           cursor: pointer; box-shadow: 0 4px 15px rgba(59,130,246,0.4); 
+           display: none; align-items: center; justify-content: center; 
+           transition: all 0.3s ease; z-index: 1000;"
+        onmouseover="this.style.transform='translateY(-5px) scale(1.1)'; this.style.boxShadow='0 8px 25px rgba(59,130,246,0.5)';"
+        onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 4px 15px rgba(59,130,246,0.4)';">
+        <i class="fas fa-arrow-up" style="font-size: 1.2rem;"></i>
+</button>
+
+<script>
+        // Back to Top Button Logic
+        const backToTopBtn = document.getElementById('backToTopBtn');
+
+        window.addEventListener('scroll', function () {
+                if (window.scrollY > 300) {
+                        backToTopBtn.style.display = 'flex';
+                } else {
+                        backToTopBtn.style.display = 'none';
+                }
+        });
+
+        function scrollToTop() {
+                window.scrollTo({
+                        top: 0,
+                        behavior: 'smooth'
+                });
+        }
+</script>
+
+{% endblock %}

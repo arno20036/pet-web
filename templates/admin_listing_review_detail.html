@@ -1,0 +1,97 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>刊登詳情 - {{ listing['trainer_name'] }}</h2>
+<div class="card">
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('admin_listing_modification_review') if is_modification else url_for('admin_listing_review') }}"
+            style="color: var(--text-muted); text-decoration: none;">&larr;
+            返回列表</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <!-- Listing Information -->
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">基本資訊</h3>
+            <div class="form-group">
+                <label>訓練師姓名</label>
+                <p>{{ listing['trainer_name'] }} ({{ listing['trainer_nickname'] }})</p>
+            </div>
+            <div class="form-group">
+                <label>寵物類型</label>
+                <p>{% if listing['pet_type'] == 'dog' %}狗{% elif listing['pet_type'] == 'cat' %}貓{% else %}{{
+                    listing['pet_type'] }}{% endif %}</p>
+            </div>
+            <div class="form-group">
+                <label>品種</label>
+                <p>{{ listing['breed'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>服務價格</label>
+                <p>{{ listing['price'] }} 元 / 小時</p>
+            </div>
+            <div class="form-group">
+                <label>可預約時段</label>
+                <p>{{ listing['available_slots'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>取消時限</label>
+                <p>前 {{ listing['cancellation_hours'] }} 小時</p>
+            </div>
+        </div>
+
+        <!-- Details -->
+        <div>
+            <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">詳細說明</h3>
+            <div class="form-group">
+                <label>寵物介紹 / 特色</label>
+                <p style="white-space: pre-line;">{{ listing['introduction'] }}</p>
+            </div>
+            <div class="form-group">
+                <label>相關規定</label>
+                <p style="white-space: pre-line;">{{ listing['rules'] }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <h3 style="border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">寵物照片</h3>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            {% for image in images %}
+            <div style="border: 1px solid #ddd; padding: 5px; border-radius: 8px;">
+                <img src="{{ url_for('uploaded_file', filename=image) }}"
+                    style="height: 150px; object-fit: cover; border-radius: 4px;">
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+
+
+
+    <div style="display: flex; gap: 10px;">
+        {% if is_modification %}
+        <form action="{{ url_for('admin_listing_modification_approve', listing_id=listing['id']) }}" method="post"
+            style="display: inline;">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('確定要核准此修改？')">核准修改</button>
+        </form>
+        <form action="{{ url_for('admin_listing_modification_reject', listing_id=listing['id']) }}" method="post"
+            style="display: inline;">
+            <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;"
+                onclick="return confirm('確定要駁回此修改？')">駁回修改</button>
+        </form>
+        {% else %}
+        <form action="{{ url_for('admin_listing_approve', listing_id=listing['id']) }}" method="post"
+            style="display: inline;">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('確定要核准此刊登？')">核准刊登</button>
+        </form>
+        <form action="{{ url_for('admin_listing_reject', listing_id=listing['id']) }}" method="post"
+            style="display: inline;">
+            <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;"
+                onclick="return confirm('確定要駁回此刊登？')">駁回刊登</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

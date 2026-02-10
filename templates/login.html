@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block title %}會員登入 - 寵物陪伴刊登平台{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <h2>會員登入</h2>
+        <form method="post">
+            <div class="form-group">
+                <label for="email">電子信箱</label>
+                <input type="email" id="email" name="email" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">密碼</label>
+                <input type="password" id="password" name="password" class="form-control" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">登入</button>
+
+            <div class="auth-footer">
+                還沒有帳號？ <a href="{{ url_for('register') }}">立即註冊</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

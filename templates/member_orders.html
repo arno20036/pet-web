@@ -1,0 +1,1034 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<h2>訂單查詢</h2>
+
+<!-- Date Filter -->
+<div
+    style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+    <div style="font-weight: 600; color: #4b5563;"><i class="fas fa-filter"></i> 篩選預約日期:</div>
+    <form action="{{ url_for('member_orders') }}" method="GET"
+        style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0;">
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <label for="start_date" style="color: #666; font-size: 0.9rem;">從</label>
+            <input type="date" id="start_date" name="start_date" value="{{ request.args.get('start_date', '') }}"
+                class="form-control" style="padding: 5px 10px; border: 1px solid #ddd; border-radius: 6px;">
+        </div>
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <label for="end_date" style="color: #666; font-size: 0.9rem;">至</label>
+            <input type="date" id="end_date" name="end_date" value="{{ request.args.get('end_date', '') }}"
+                class="form-control" style="padding: 5px 10px; border: 1px solid #ddd; border-radius: 6px;">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm"
+            style="background: var(--primary-color); color: white; border: none; padding: 6px 15px; border-radius: 6px;">
+            查詢
+        </button>
+        {% if request.args.get('start_date') or request.args.get('end_date') %}
+        <a href="{{ url_for('member_orders') }}" class="btn btn-outline btn-sm"
+            style="color: #666; text-decoration: none; border: 1px solid #ccc; padding: 5px 12px; border-radius: 6px;">
+            清除
+        </a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Tabs -->
+<div class="tabs" style="display: flex; gap: 20px; border-bottom: 2px solid #eee; margin-bottom: 20px;">
+    <div onclick="switchTab('upcoming')" id="tab-upcoming"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid var(--primary-color); font-weight: 600; color: var(--primary-color);">
+        進行中的預約
+        {% if upcoming_orders %}
+        <span class="badge"
+            style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.75rem;">{{
+            upcoming_orders|length }}</span>
+        {% endif %}
+    </div>
+    <div onclick="switchTab('pending')" id="tab-pending"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #666;">
+        待接受的預約
+        {% if pending_orders %}
+        <span class="badge"
+            style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.75rem;">{{
+            pending_orders|length }}</span>
+        {% endif %}
+    </div>
+    <div onclick="switchTab('history')" id="tab-history"
+        style="padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #666;">
+        歷史紀錄
+    </div>
+</div>
+
+<!-- Upcoming (Ongoing) Orders -->
+<div id="section-upcoming">
+    {% if upcoming_orders %}
+    {% for order in upcoming_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #10b981;"> <!-- Green -->
+        <div style="display: flex; justify-content: space-between;">
+            <div>
+                <h4 style="margin: 0 0 5px 0;">{{ order.pet_name }} ({{ order.pet_type }})</h4>
+                <p style="color: #666; margin: 0 0 10px 0;">訓練師: {{ order.trainer_nickname or order.trainer_name }}</p>
+                <div style="font-size: 0.95rem;">
+                    <p style="margin: 5px 0;"><i class="fas fa-calendar-alt"></i> {{ order.booking_date }} {{
+                        order.time_range }}</p>
+                    <p style="margin: 5px 0;"><i class="fas fa-map-marker-alt"></i>
+                        {% if order.location_type == 'home' %}到府服務
+                        {% elif order.location_type == 'store' %}指定店家
+                        {% elif order.location_type == 'public' %}公共區域
+                        {% else %}{{ order.location_type }}{% endif %}
+                        - {{ order.location_detail }}
+                    </p>
+                    <p style="margin: 5px 0;"><i class="fas fa-dollar-sign"></i> ${{ order.total_price }}</p>
+                </div>
+            </div>
+            <div
+                style="text-align: right; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end;">
+                {% if order.status == 'in_progress' %}
+                <span class="badge"
+                    style="background: #10b981; color: white; padding: 5px 10px; border-radius: 15px; box-shadow: 0 0 5px #10b981;">
+                    <i class="fas fa-play-circle"></i> 進行中
+                </span>
+                {% else %}
+                <span class="badge"
+                    style="background: #d1fae5; color: #065f46; padding: 5px 10px; border-radius: 15px;">已確認</span>
+                {% endif %}
+
+                <!-- Moved Reschedule Status Here -->
+                {% if order.reschedule_status == 'pending' %}
+                <div style="margin-top: 10px;">
+                    <span class="badge"
+                        style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 6px; font-weight: normal; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 3px;">
+                        <i class="fas fa-clock"></i> <span>改期審核中</span>
+                    </span>
+                </div>
+                {% elif order.reschedule_status == 'rejected' %}
+                <div style="margin-top: 10px;">
+                    <span class="badge"
+                        style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 6px; font-weight: normal; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 3px;">
+                        <i class="fas fa-times-circle"></i> <span>改期申請被拒</span>
+                    </span>
+                </div>
+                {% endif %}
+                {% if order.reschedule_count and order.reschedule_count > 0 %}
+                <div style="margin-top: 5px; font-size: 0.8rem; color: #059669;">
+                    <i class="fas fa-check"></i> 已成功改期 {{ order.reschedule_count }} 次
+                </div>
+                {% endif %}
+                {% if order.paid_amount and order.paid_amount > order.total_price %}
+                <div style="margin-top: 5px;">
+                    <span class="badge"
+                        style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 3px;">
+                        <i class="fas fa-undo"></i> 待退款 ${{ order.paid_amount - order.total_price }}
+                    </span>
+                    <a href="{{ url_for('member_profile') }}" class="btn btn-sm btn-outline-primary"
+                        style="margin-left: 5px; font-size: 0.8rem; padding: 2px 8px;">
+                        <i class="fas fa-university"></i> 設定退款帳戶
+                    </a>
+                </div>
+                {% endif %}
+                {% if order.status == 'confirmed' and (not order.payment_status or order.payment_status == 'unpaid') %}
+                <div style="margin-top: auto; padding-top: 15px;">
+                    {% if order.paid_amount and order.paid_amount > 0 %}
+                    <span class="badge"
+                        style="background: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; display: inline-block; margin-bottom: 8px;">
+                        <i class="fas fa-exclamation-triangle"></i> 需要補款
+                    </span><br>
+                    {% endif %}
+                    <a href="{{ url_for('member_payment', order_id=order.id) }}" class="btn btn-primary btn-sm"
+                        style="background: var(--primary-color); color: white; border: none; white-space: nowrap; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        <i class="fas fa-credit-card"></i> {% if order.paid_amount and order.paid_amount > 0 %}立即補款{%
+                        else %}立即付款{% endif %}
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+
+
+                {% if order.status == 'confirmed' and order.reschedule_status != 'pending' %}
+                {% if order.reschedule_count >= 2 %}
+                <button class="btn btn-outline btn-sm" disabled
+                    style="white-space: nowrap; opacity: 0.6; cursor: not-allowed; background: #f3f4f6; border-color: #d1d5db; color: #9ca3af;"
+                    title="已達改期次數上限">
+                    <i class="fas fa-edit"></i> 改期已達上限
+                </button>
+                {% else %}
+                <button class="btn btn-outline btn-sm" style="white-space: nowrap;" data-id="{{ order.id }}"
+                    data-date="{{ order.booking_date }}" data-time="{{ order.time_range }}"
+                    data-duration="{{ order.duration or 1 }}" data-slots="{{ order.available_slots }}"
+                    onclick="openRescheduleModalFromBtn(this)">
+                    <i class="fas fa-edit"></i> 申請改期
+                </button>
+                {% endif %}
+                <button class="btn btn-outline btn-sm"
+                    style="border-color: #ef4444; color: #ef4444; white-space: nowrap;"
+                    onclick="openCancelModal({{ order.id }}, '{{ order.payment_status or 'unpaid' }}')">
+                    <i class="fas fa-times"></i> 取消訂單
+                </button>
+                {% endif %}
+
+                <button class="btn btn-outline btn-sm" style="white-space: nowrap;"
+                    onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.trainer_nickname or order.trainer_name }}')"><i
+                        class="fas fa-comments"></i> 聯絡訓練師</button>
+
+                {% if order.appeal_status %}
+                <a href="{{ url_for('member_appeal_detail', appeal_id=order.appeal_id) }}" class="btn btn-sm"
+                    style="border: 1px solid #ccc; background: #f8f9fa; color: #666; text-decoration: none; white-space: nowrap;">
+                    {% if order.appeal_status == 'pending' %}
+                    <i class="fas fa-clock text-warning"></i> 申訴處理中
+                    {% elif order.appeal_status == 'processing' %}
+                    <i class="fas fa-spinner fa-spin text-info"></i> 申訴處理中
+                    {% elif order.appeal_status == 'resolved' %}
+                    <i class="fas fa-check-circle text-success"></i> 申訴已解決
+                    {% elif order.appeal_status == 'closed' %}
+                    <i class="fas fa-archive text-secondary"></i> 申訴已結案
+                    {% endif %}
+                </a>
+                {% else %}
+                <a href="{{ url_for('member_order_appeal', order_id=order.id) }}" class="btn btn-outline btn-sm"
+                    style="border-color: #f59e0b; color: #f59e0b; white-space: nowrap;">
+                    <i class="fas fa-exclamation-circle"></i> 申訴/求助
+                </a>
+                {% endif %}
+
+            </div>
+            {% if order.status == 'confirmed' and (not order.payment_status or order.payment_status == 'unpaid') %}
+
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="text-align: center; color: #888; padding: 40px;">
+        <i class="fas fa-calendar-check" style="font-size: 3rem; color: #d1d5db; margin-bottom: 15px;"></i>
+        <p>目前沒有進行中的預約</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Pending Orders -->
+<div id="section-pending" style="display: none;">
+    {% if pending_orders %}
+    {% for order in pending_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #f59e0b;"> <!-- Orange -->
+        <div style="display: flex; justify-content: space-between;">
+            <div>
+                <h4 style="margin: 0 0 5px 0;">{{ order.pet_name }} ({{ order.pet_type }})</h4>
+                <p style="color: #666; margin: 0 0 10px 0;">訓練師: {{ order.trainer_nickname or order.trainer_name }}</p>
+                <div style="font-size: 0.95rem;">
+                    <p style="margin: 5px 0;"><i class="fas fa-calendar-alt"></i> {{ order.booking_date }} {{
+                        order.time_range }}</p>
+                    <p style="margin: 5px 0;"><i class="fas fa-dollar-sign"></i> ${{ order.total_price }}</p>
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span class="badge"
+                    style="background: #fef3c7; color: #92400e; padding: 5px 10px; border-radius: 15px;">待接受</span>
+            </div>
+        </div>
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-outline btn-sm"
+                    style="border-color: #ef4444; color: #ef4444; white-space: nowrap;"
+                    onclick="openCancelModal({{ order.id }}, 'unpaid')">
+                    <i class="fas fa-times"></i> 取消預約
+                </button>
+                <button class="btn btn-outline btn-sm" style="white-space: nowrap;"
+                    onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.trainer_nickname or order.trainer_name }}')">
+                    <i class="fas fa-comments"></i> 聯絡訓練師
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="text-align: center; color: #888; padding: 40px;">
+        <p>目前沒有待接受的預約</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- History Orders -->
+<div id="section-history" style="display: none;">
+    {% if history_orders %}
+    <p style="text-align: right; color: #666; font-size: 0.9rem;">共 {{ history_orders|length }} 筆歷史訂單</p>
+    {% for order in history_orders %}
+    <div class="card mb-3" style="border-left: 5px solid #9ca3af;"> <!-- Gray -->
+        <!-- Header with pet name and status -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h4 style="margin: 0 0 5px 0;">{{ order.pet_name }} ({{ order.pet_type }})</h4>
+                <p style="color: #666; margin: 0; font-size: 0.9rem;">訂單編號: #{{ order.id }}</p>
+            </div>
+            <div style="text-align: right;">
+                {% if order.status == 'confirmed' %}
+                <span class="badge"
+                    style="background: #e5e7eb; color: #374151; padding: 5px 10px; border-radius: 15px;">已結束</span>
+                {% elif order.status == 'rejected' %}
+                <span class="badge"
+                    style="background: #fee2e2; color: #991b1b; padding: 5px 10px; border-radius: 15px;">已拒絕</span>
+                {% elif order.status == 'cancelled' %}
+                <span class="badge"
+                    style="background: #f3f4f6; color: #374151; padding: 5px 10px; border-radius: 15px;">已取消</span>
+                {% elif order.status == 'completed' %}
+                <span class="badge"
+                    style="background: #dbeafe; color: #1e40af; padding: 5px 10px; border-radius: 15px;">已完成</span>
+                {% endif %}
+
+                {% if order.payment_status == 'refunded' %}
+                <div style="margin-top: 8px;">
+                    <span class="badge"
+                        style="background: #d1fae5; color: #065f46; padding: 5px 10px; border-radius: 15px;">
+                        <i class="fas fa-check-circle"></i> 已退款
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Order Details Grid -->
+        <div
+            style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; font-size: 0.9rem;">
+            <!-- Trainer Info -->
+            <div>
+                <span style="color: #666;"><i class="fas fa-chalkboard-teacher"
+                        style="width: 16px; margin-right: 6px;"></i>訓練師:</span>
+                <span style="font-weight: 500;">{{ order.trainer_nickname or order.trainer_name }}</span>
+            </div>
+            <!-- Date & Time -->
+            <div>
+                <span style="color: #666;"><i class="fas fa-calendar-alt"
+                        style="width: 16px; margin-right: 6px;"></i>預約時間:</span>
+                <span style="font-weight: 500;">{{ order.booking_date }} {{ order.time_range }}</span>
+            </div>
+            <!-- Duration -->
+            <div>
+                <span style="color: #666;"><i class="fas fa-clock"
+                        style="width: 16px; margin-right: 6px;"></i>時長:</span>
+                <span style="font-weight: 500;">{{ order.duration or 1 }} 小時</span>
+            </div>
+            <!-- Location -->
+            <div>
+                <span style="color: #666;"><i class="fas fa-map-marker-alt"
+                        style="width: 16px; margin-right: 6px;"></i>地點:</span>
+                <span style="font-weight: 500;">
+                    {% if order.location_type == 'home' %}到府服務
+                    {% elif order.location_type == 'store' %}指定店家
+                    {% elif order.location_type == 'public' %}公共區域
+                    {% else %}{{ order.location_type }}{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <!-- Payment Details -->
+        <div style="margin-top: 15px; padding: 12px; background: #f9fafb; border-radius: 8px;">
+            <div style="font-weight: 600; color: #374151; margin-bottom: 10px;">
+                <i class="fas fa-receipt"></i> 交易明細
+            </div>
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 0.9rem;">
+                <!-- Original Price (if changed) -->
+                {% if order.original_price and order.original_price != order.total_price %}
+                <div>
+                    <span style="color: #666;">原始金額:</span>
+                    <span style="font-weight: 500; text-decoration: line-through; color: #9ca3af;">${{
+                        order.original_price }}</span>
+                </div>
+                {% endif %}
+
+                <!-- Total Price -->
+                <div>
+                    <span style="color: #666;">訂單金額:</span>
+                    <span style="font-weight: 600; color: #1e293b;">${{ order.total_price }}</span>
+                </div>
+
+                <!-- Paid Amount -->
+                {% if order.paid_amount %}
+                <div>
+                    <span style="color: #666;">實付金額:</span>
+                    <span style="font-weight: 600; color: #059669;">${{ order.paid_amount }}</span>
+                </div>
+                {% endif %}
+
+                <!-- Payment Status -->
+                <div>
+                    <span style="color: #666;">付款狀態:</span>
+                    {% if order.payment_status == 'paid' %}
+                    <span style="color: #059669; font-weight: 500;"><i class="fas fa-check-circle"></i> 已付款</span>
+                    {% elif order.payment_status == 'refunded' %}
+                    <span style="color: #0284c7; font-weight: 500;"><i class="fas fa-undo"></i> 已退款</span>
+                    {% else %}
+                    <span style="color: #9ca3af;">未付款</span>
+                    {% endif %}
+                </div>
+
+                <!-- Payment Time -->
+                {% if order.payment_time %}
+                <div>
+                    <span style="color: #666;">付款時間:</span>
+                    <span style="font-weight: 500;">{{ order.payment_time|replace('T', ' ')|truncate(16, True, '')
+                        }}</span>
+                </div>
+                {% endif %}
+
+                <!-- Supplement Info (Pending) -->
+                {% if order.paid_amount and order.paid_amount < order.total_price %} <div
+                    style="grid-column: 1 / -1; margin-top: 5px; padding-top: 10px; border-top: 1px dashed #e5e7eb;">
+                    <span style="color: #d97706;"><i class="fas fa-exclamation-triangle"></i> 待補款:</span>
+                    <span style="font-weight: 600; color: #d97706;">${{ order.total_price - order.paid_amount }}</span>
+            </div>
+            {% endif %}
+
+            <!-- Supplement Info (Completed) -->
+            {% if order.original_price and order.original_price < order.total_price and order.paid_amount>=
+                order.total_price %}
+                <div style="grid-column: 1 / -1; margin-top: 5px; padding-top: 10px; border-top: 1px dashed #e5e7eb;">
+                    <span style="color: #059669;"><i class="fas fa-check-circle"></i> 已補款:</span>
+                    <span style="font-weight: 600; color: #059669;">${{ order.total_price - order.original_price
+                        }}</span>
+                    <span style="font-size: 0.8rem; color: #666;">(價格調整)</span>
+                </div>
+                {% endif %}
+
+                <!-- Refund Info -->
+                {% if order.refund_amount and order.refund_amount > 0 %}
+                <div style="grid-column: 1 / -1; margin-top: 5px; padding-top: 10px; border-top: 1px dashed #e5e7eb;">
+                    {% if order.payment_status == 'refunded' %}
+                    <span style="color: #059669;"><i class="fas fa-check-circle"></i> 已退款:</span>
+                    {% else %}
+                    <span style="color: #0284c7;"><i class="fas fa-hand-holding-usd"></i> 退款處理中:</span>
+                    {% endif %}
+                    <span style="font-weight: 600; color: #059669;">${{ order.refund_amount }}</span>
+                </div>
+                {% elif order.paid_amount and order.paid_amount > order.total_price and order.status != 'cancelled' %}
+                <!-- Fallback for excess payment refunds lacking specific refund task record (e.g. legacy) -->
+                <div style="grid-column: 1 / -1; margin-top: 5px; padding-top: 10px; border-top: 1px dashed #e5e7eb;">
+                    <span style="color: #0284c7;"><i class="fas fa-hand-holding-usd"></i> 待退款 (溢繳):</span>
+                    <span style="font-weight: 600; color: #0284c7;">${{ order.paid_amount - order.total_price }}</span>
+                </div>
+                {% endif %}
+        </div>
+    </div>
+
+    <!-- Order Created Time -->
+    <div style="margin-top: 10px; font-size: 0.8rem; color: #9ca3af;">
+        <i class="fas fa-info-circle"></i> 建立時間: {{ order.created_at }}
+    </div>
+
+    <!-- Action Buttons -->
+    <div
+        style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee; display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn btn-outline btn-sm" style="white-space: nowrap;"
+            onclick="openFloatingChatFromExternal({{ order.id }}, '{{ order.trainer_nickname or order.trainer_name }}')"><i
+                class="fas fa-comments"></i> 查看留言</button>
+
+        {% if order.appeal_status %}
+        <a href="{{ url_for('member_appeal_detail', appeal_id=order.appeal_id) }}" class="btn btn-sm"
+            style="border: 1px solid #ccc; background: #f8f9fa; color: #666; text-decoration: none; white-space: nowrap;">
+            {% if order.appeal_status == 'pending' %}
+            <i class="fas fa-clock text-warning"></i> 申訴處理中
+            {% elif order.appeal_status == 'processing' %}
+            <i class="fas fa-spinner fa-spin text-info"></i> 申訴處理中
+            {% elif order.appeal_status == 'resolved' %}
+            <i class="fas fa-check-circle text-success"></i> 申訴已解決
+            {% elif order.appeal_status == 'closed' %}
+            <i class="fas fa-archive text-secondary"></i> 申訴已結案
+            {% endif %}
+        </a>
+        {% else %}
+        <a href="{{ url_for('member_order_appeal', order_id=order.id) }}" class="btn btn-outline btn-sm"
+            style="border-color: #f59e0b; color: #f59e0b; white-space: nowrap;">
+            <i class="fas fa-exclamation-circle"></i> 申訴/求助
+        </a>
+        {% endif %}
+
+        <!-- Review Button -->
+        {% if order.status == 'completed' %}
+        {% if order.has_reviewed %}
+        <span class="badge"
+            style="background: #e5e7eb; color: #6b7280; padding: 5px 12px; border-radius: 6px; white-space: nowrap;">
+            <i class="fas fa-check"></i> 已評價
+        </span>
+        {% else %}
+        <button class="btn btn-sm" style="background: #fbbf24; color: white; border: none; white-space: nowrap;"
+            onclick="openReviewModal({{ order.id }})">
+            <i class="fas fa-star"></i> 給予評價
+        </button>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div style="text-align: center; color: #888; padding: 20px;">
+    <p>暫無歷史紀錄</p>
+</div>
+{% endif %}
+</div>
+
+<!-- Review Modal -->
+<div id="reviewModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px;">
+        <h3 style="margin-top: 0;">給予評價</h3>
+        <form id="reviewForm">
+            <input type="hidden" id="reviewOrderId">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">評分</label>
+                <div class="star-rating" style="font-size: 1.5rem; color: #ddd; cursor: pointer;">
+                    <i class="fas fa-star" data-rating="1"></i>
+                    <i class="fas fa-star" data-rating="2"></i>
+                    <i class="fas fa-star" data-rating="3"></i>
+                    <i class="fas fa-star" data-rating="4"></i>
+                    <i class="fas fa-star" data-rating="5"></i>
+                </div>
+                <input type="hidden" id="ratingValue" required>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">評論內容 (選填)</label>
+                <textarea id="reviewComment"
+                    style="width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 6px;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn btn-outline" onclick="closeReviewModal()">取消</button>
+                <button type="submit" class="btn btn-primary">送出評價</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- Reschedule Modal HTML -->
+<div id="rescheduleModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;">
+        <h3 style="margin-top: 0; margin-bottom: 20px;">申請改期</h3>
+        <form id="rescheduleForm">
+            <input type="hidden" id="reschOrderId">
+            <input type="hidden" id="reschOriginalDuration">
+
+            <div style="margin-bottom: 15px; background: #f9fafb; padding: 10px; border-radius: 8px;">
+                <label style="display: block; margin-bottom: 5px; color: #666; font-size: 0.9rem;">原定時段</label>
+                <div id="reschOriginalTime" style="font-weight: bold; color: #333;"></div>
+                <div style="font-size: 0.85rem; color: #666; margin-top: 5px;">
+                    可預約時段: <span id="reschAvailableSlots" style="color: var(--primary-color);"></span>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">新日期</label>
+                <input type="date" id="reschDate" class="form-control" required
+                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <div style="flex: 1;">
+                    <label style="display: block; margin-bottom: 5px;">開始時間</label>
+                    <select id="reschStartTime" class="form-control" required
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;"
+                        onchange="updateReschEndTimeOptions()">
+                        <option value="" disabled selected>請選擇</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; margin-bottom: 5px;">結束時間</label>
+                    <select id="reschEndTime" class="form-control" required
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;"
+                        onchange="calcReschDuration()">
+                        <option value="" disabled selected>請先選開始時間</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="reschDurationInfo" style="margin-bottom: 20px; font-size: 0.9rem; color: #666; display: none;">
+                預計時長: <span id="reschNewDuration" style="font-weight: bold; color: #333;"></span> 小時
+                <span id="reschPriceWarning" style="color: #f59e0b; margin-left: 10px; display: none;">(金額將重新計算)</span>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button type="button" class="btn btn-outline" onclick="closeRescheduleModal()">取消</button>
+                <button type="submit" class="btn btn-primary">送出申請</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Cancel Modal HTML -->
+<div id="cancelModal" class="modal"
+    style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+    <div class="modal-content"
+        style="background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 10px;">
+        <span onclick="closeCancelModal()"
+            style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+        <h3 style="margin-top: 0; color: #ef4444;">取消訂單</h3>
+
+        <div id="cancel-warning">
+            <p>您確定要取消此訂單嗎？取消後無法復原。</p>
+            <p id="cancel-limit-info"
+                style="color: #666; font-size: 0.9rem; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+            </p>
+        </div>
+
+        <div id="refund-section"
+            style="display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+            <p style="font-weight: bold; margin-bottom: 10px;">此訂單已付款，請提供退款帳戶：</p>
+
+            <div class="form-group mb-2">
+                <label>選擇帳戶</label>
+                <select id="refund-account-select" class="form-control" onchange="fillBankDetails(this.value)"
+                    style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                    <option value="">-- 輸入新帳戶 --</option>
+                </select>
+            </div>
+
+            <div id="new-account-inputs">
+                <div class="form-group mb-2">
+                    <label>銀行代碼</label>
+                    <input type="text" id="refund-bank-code" class="form-control" placeholder="例如: 822"
+                        style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <div class="form-group mb-2">
+                    <label>銀行帳號</label>
+                    <input type="text" id="refund-account-number" class="form-control" placeholder="請輸入帳號"
+                        style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <div class="form-group mb-2">
+                    <label>戶名</label>
+                    <input type="text" id="refund-account-name" class="form-control" placeholder="請輸入戶名"
+                        style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="save-account-check">
+                    <label for="save-account-check">儲存為常用帳戶</label>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: right;">
+            <button class="btn btn-secondary" onclick="closeCancelModal()"
+                style="padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: white; border-radius: 5px;">暫不取消</button>
+            <button class="btn btn-danger" onclick="submitCancel()"
+                style="padding: 8px 15px; cursor: pointer; background: #ef4444; color: white; border: none; border-radius: 5px; margin-left: 10px;">確認取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const monthlyCancelCount = {{ monthly_cancel_count or 0 }};
+    // Tab switching logic (existing)
+    function switchTab(tabName) {
+        document.querySelectorAll('[id^="section-"]').forEach(el => el.style.display = 'none');
+        document.getElementById('section-' + tabName).style.display = 'block';
+
+        document.querySelectorAll('[id^="tab-"]').forEach(el => {
+            el.style.borderBottom = '3px solid transparent';
+            el.style.color = '#666';
+        });
+        const activeTab = document.getElementById('tab-' + tabName);
+        if (activeTab) {
+            activeTab.style.borderBottom = '3px solid var(--primary-color)';
+            activeTab.style.color = 'var(--primary-color)';
+        }
+    }
+
+    // Review Modal Logic
+    const reviewModal = document.getElementById('reviewModal'); // Renamed variable to avoid conflict
+    const stars = document.querySelectorAll('.star-rating i');
+    const ratingInput = document.getElementById('ratingValue');
+
+    function openReviewModal(orderId) {
+        document.getElementById('reviewOrderId').value = orderId;
+        ratingInput.value = '';
+        document.getElementById('reviewComment').value = '';
+        updateStars(0);
+        reviewModal.style.display = 'flex';
+    }
+
+    function closeReviewModal() {
+        reviewModal.style.display = 'none';
+    }
+
+    // Star Rating Interaction
+    stars.forEach(star => {
+        star.addEventListener('click', function () {
+            const rating = this.dataset.rating;
+            ratingInput.value = rating;
+            updateStars(rating);
+        });
+
+        star.addEventListener('mouseover', function () {
+            updateStars(this.dataset.rating, true);
+        });
+
+        star.addEventListener('mouseout', function () {
+            updateStars(ratingInput.value || 0);
+        });
+    });
+
+    function updateStars(rating, isHover = false) {
+        stars.forEach(star => {
+            if (star.dataset.rating <= rating) {
+                star.style.color = '#fbbf24'; // Gold
+            } else {
+                star.style.color = '#ddd';
+            }
+        });
+    }
+
+    document.getElementById('reviewForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const orderId = document.getElementById('reviewOrderId').value;
+        const rating = ratingInput.value;
+        const comment = document.getElementById('reviewComment').value;
+
+        if (!rating) {
+            alert('請選擇評分星數');
+            return;
+        }
+
+        if (!confirm('送出後將無法修改，確定要送出評價嗎？')) {
+            return;
+        }
+
+        fetch('/api/reviews', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: orderId, rating: rating, comment: comment })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('評價提交成功！');
+                    closeReviewModal();
+                    window.location.reload(); // Reload to update button state
+                } else {
+                    alert(data.error || '提交失敗');
+                }
+            });
+    });
+
+    // Init
+    switchTab('upcoming');
+
+    // ----------------------------
+    // Reschedule & Cancel Logic (Consolidated)
+    // ----------------------------
+    const reschModal = document.getElementById('rescheduleModal');
+    let currentAllowedWeekdays = [];
+    let currentMinHour = 9;
+    let currentMaxHour = 22;
+
+    function openRescheduleModal(orderId, date, timeRange, duration, availableSlots) {
+        document.getElementById('reschOrderId').value = orderId;
+        document.getElementById('reschOriginalTime').innerText = `${date} ${timeRange}`;
+        document.getElementById('reschOriginalDuration').value = duration;
+        document.getElementById('reschAvailableSlots').innerText = availableSlots || '無限制';
+        parseAvailableSlots(availableSlots);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        document.getElementById('reschDate').min = tomorrow.toISOString().split('T')[0];
+        document.getElementById('reschDate').value = '';
+        initStartTimeOptions();
+        document.getElementById('reschEndTime').innerHTML = '<option value="" disabled selected>請先選開始時間</option>';
+        document.getElementById('reschDurationInfo').style.display = 'none';
+        reschModal.style.display = 'flex';
+    }
+
+    function parseAvailableSlots(slotsStr) {
+        currentMinHour = 9;
+        currentMaxHour = 22;
+        currentAllowedWeekdays = [];
+        if (!slotsStr) return;
+        const timeMatch = slotsStr.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/);
+        if (timeMatch) {
+            currentMinHour = parseInt(timeMatch[1]);
+            currentMaxHour = parseInt(timeMatch[3]);
+        }
+        const dayMap = { '週日': 0, '週一': 1, '週二': 2, '週三': 3, '週四': 4, '週五': 5, '週六': 6 };
+        for (const [dayName, dayVal] of Object.entries(dayMap)) {
+            if (slotsStr.includes(dayName)) currentAllowedWeekdays.push(dayVal);
+        }
+    }
+
+    function initStartTimeOptions() {
+        const select = document.getElementById('reschStartTime');
+        select.innerHTML = '<option value="" disabled selected>請選擇</option>';
+        for (let h = currentMinHour; h < currentMaxHour; h++) {
+            const timeStr = (h < 10 ? '0' : '') + h + ':00';
+            const option = document.createElement('option');
+            option.value = timeStr;
+            option.textContent = timeStr;
+            select.appendChild(option);
+        }
+    }
+
+    const reschDateInput = document.getElementById('reschDate');
+    if (reschDateInput) {
+        reschDateInput.addEventListener('change', function () {
+            if (!this.value) return;
+            if (currentAllowedWeekdays.length === 0) return;
+            const dateObj = new Date(this.value);
+            const day = dateObj.getDay();
+            if (!currentAllowedWeekdays.includes(day)) {
+                alert('該日期非開放預約日，請選擇其他日期。\n開放時段: ' + document.getElementById('reschAvailableSlots').innerText);
+                this.value = '';
+            }
+        });
+    }
+
+    function updateReschEndTimeOptions() {
+        const startSelect = document.getElementById('reschStartTime');
+        const endSelect = document.getElementById('reschEndTime');
+        if (!startSelect.value) return;
+        const startH = parseInt(startSelect.value.split(':')[0]);
+        endSelect.innerHTML = '<option value="" disabled selected>請選擇</option>';
+        for (let h = startH + 1; h <= currentMaxHour; h++) {
+            const timeStr = (h < 10 ? '0' : '') + h + ':00';
+            const option = document.createElement('option');
+            option.value = timeStr;
+            option.textContent = timeStr;
+            endSelect.appendChild(option);
+        }
+        const originalDuration = parseInt(document.getElementById('reschOriginalDuration').value);
+        const targetEndH = startH + originalDuration;
+        if (targetEndH <= currentMaxHour) {
+            const targetTimeStr = (targetEndH < 10 ? '0' : '') + targetEndH + ':00';
+            for (let opt of endSelect.options) {
+                if (opt.value === targetTimeStr) {
+                    endSelect.value = targetTimeStr;
+                    break;
+                }
+            }
+        }
+        calcReschDuration();
+    }
+
+    function calcReschDuration() {
+        const startSelect = document.getElementById('reschStartTime');
+        const endSelect = document.getElementById('reschEndTime');
+        const infoDiv = document.getElementById('reschDurationInfo');
+        const warningSpan = document.getElementById('reschPriceWarning');
+        if (startSelect.value && endSelect.value) {
+            const startH = parseInt(startSelect.value.split(':')[0]);
+            const endH = parseInt(endSelect.value.split(':')[0]);
+            const newDuration = endH - startH;
+            document.getElementById('reschNewDuration').innerText = newDuration;
+            infoDiv.style.display = 'block';
+            const originalDuration = parseInt(document.getElementById('reschOriginalDuration').value);
+            if (newDuration !== originalDuration) warningSpan.style.display = 'inline';
+            else warningSpan.style.display = 'none';
+        } else {
+            infoDiv.style.display = 'none';
+        }
+    }
+
+    function closeRescheduleModal() {
+        reschModal.style.display = 'none';
+        document.getElementById('rescheduleForm').reset();
+    }
+
+    const reschForm = document.getElementById('rescheduleForm');
+    if (reschForm) {
+        reschForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const orderId = document.getElementById('reschOrderId').value;
+            const date = document.getElementById('reschDate').value;
+            const startTime = document.getElementById('reschStartTime').value;
+            const endTime = document.getElementById('reschEndTime').value;
+            if (!startTime || !endTime) {
+                alert('請選擇完整時間時段');
+                return;
+            }
+            const startH = parseInt(startTime.split(':')[0]);
+            const endH = parseInt(endTime.split(':')[0]);
+            const duration = endH - startH;
+            if (!confirm(`確定要提出改期申請嗎？\n新時段: ${date} ${startTime} - ${endTime}\n時長: ${duration} 小時`)) return;
+            fetch(`/api/order/${orderId}/reschedule`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: date, time: startTime, duration: duration })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('改期申請已送出！');
+                        closeRescheduleModal();
+                        window.location.reload();
+                    } else {
+                        alert(data.error || '申請失敗');
+                    }
+                });
+        });
+    }
+
+    // Cancel Logic
+    let currentCancelOrderId = null;
+    let userBankAccounts = [];
+
+    // Global assignment
+    window.openCancelModal = function (orderId, paymentStatus) {
+        // alert("Cancel click: " + orderId);
+        currentCancelOrderId = orderId;
+        const modal = document.getElementById('cancelModal');
+        const refundSection = document.getElementById('refund-section');
+        if (modal) modal.style.display = 'block';
+
+        // Update cancellation limit info
+        const limitInfo = document.getElementById('cancel-limit-info');
+        const remaining = 2 - monthlyCancelCount;
+        const confirmBtn = document.querySelector('#cancelModal .btn-danger');
+
+        if (limitInfo) {
+            if (remaining <= 0) {
+                limitInfo.innerHTML = `<span style="color: #ef4444; font-weight: bold;">本月取消額度已用完 (${monthlyCancelCount}/2)。無法進行取消。</span>`;
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.style.opacity = '0.5';
+                    confirmBtn.style.cursor = 'not-allowed';
+                    confirmBtn.title = "本月取消次數已達上限";
+                    confirmBtn.onclick = null; // Disable click
+                }
+            } else {
+                limitInfo.innerHTML = `本月取消額度: 2 次<br>您已使用: <span style="font-weight:bold">${monthlyCancelCount}</span> 次<br>剩餘額度: <span style="color: #059669; font-weight:bold">${remaining}</span> 次`;
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.style.opacity = '1';
+                    confirmBtn.style.cursor = 'pointer';
+                    confirmBtn.title = "";
+                    confirmBtn.onclick = submitCancel; // Restore click
+                }
+            }
+        }
+        if (paymentStatus === 'paid') {
+            if (refundSection) refundSection.style.display = 'block';
+            fetchBankAccounts();
+        } else {
+            if (refundSection) refundSection.style.display = 'none';
+        }
+    };
+
+    window.closeCancelModal = function () {
+        document.getElementById('cancelModal').style.display = 'none';
+        currentCancelOrderId = null;
+    };
+
+    function fetchBankAccounts() {
+        fetch('/api/user/bank-accounts')
+            .then(res => res.json())
+            .then(data => {
+                if (data.accounts) {
+                    userBankAccounts = data.accounts;
+                    const select = document.getElementById('refund-account-select');
+                    if (select) {
+                        select.innerHTML = '<option value="">-- 輸入新帳戶 --</option>';
+                        data.accounts.forEach(acc => {
+                            const opt = document.createElement('option');
+                            opt.value = acc.id;
+                            opt.textContent = `${acc.bank_code} - ${acc.account_number} (${acc.account_name})`;
+                            select.appendChild(opt);
+                        });
+                    }
+                }
+            })
+            .catch(console.error);
+    }
+
+    window.fillBankDetails = function (accountId) {
+        if (!accountId) {
+            document.getElementById('refund-bank-code').value = '';
+            document.getElementById('refund-account-number').value = '';
+            document.getElementById('refund-account-name').value = '';
+            return;
+        }
+        const acc = userBankAccounts.find(a => a.id == accountId);
+        if (acc) {
+            document.getElementById('refund-bank-code').value = acc.bank_code;
+            document.getElementById('refund-account-number').value = acc.account_number;
+            document.getElementById('refund-account-name').value = acc.account_name;
+        }
+    };
+
+    window.submitCancel = function () {
+        if (!currentCancelOrderId) return;
+        // if (!confirm('請再次確認：您確定要取消此訂單嗎？')) return; // Removed redundant check
+
+        const refundSection = document.getElementById('refund-section');
+        let payload = {};
+
+        if (refundSection && refundSection.style.display !== 'none') {
+            const bankCode = document.getElementById('refund-bank-code').value;
+            const accountNum = document.getElementById('refund-account-number').value;
+            const accountName = document.getElementById('refund-account-name').value;
+
+            if (!bankCode || !accountNum || !accountName) {
+                alert('請完整填寫退款帳戶資訊');
+                return;
+            }
+
+            payload.bank_details = {
+                bank_code: bankCode,
+                account_number: accountNum,
+                account_name: accountName
+            };
+
+            const saveCheck = document.getElementById('save-account-check');
+            if (saveCheck && saveCheck.checked) {
+                // Compatibility safe object
+                const bankData = {
+                    bank_code: bankCode,
+                    account_number: accountNum,
+                    account_name: accountName,
+                    is_default: false
+                };
+
+                fetch('/api/user/bank-accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(bankData)
+                }).catch(e => console.error("Save bank account error", e));
+            }
+        }
+
+        fetch(`/api/order/${currentCancelOrderId}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('訂單已取消' + (refundSection && refundSection.style.display !== 'none' ? '，退款處理中' : ''));
+                    location.reload();
+                } else {
+                    alert(data.error || '取消失敗');
+                }
+            })
+            .catch(err => {
+                alert('系統錯誤: ' + err);
+                console.error(err);
+            });
+    };
+
+    window.openRescheduleModalFromBtn = function (btn) {
+        const orderId = btn.getAttribute('data-id');
+        const date = btn.getAttribute('data-date');
+        const timeRange = btn.getAttribute('data-time');
+        const duration = btn.getAttribute('data-duration');
+        const availableSlots = btn.getAttribute('data-slots');
+        openRescheduleModal(orderId, date, timeRange, duration, availableSlots);
+    };
+
+    window.onclick = function (event) {
+        const cancelModal = document.getElementById('cancelModal');
+        const reschModal = document.getElementById('rescheduleModal');
+        const reviewModal = document.getElementById('reviewModal'); // And Review Modal
+        if (cancelModal && event.target == cancelModal) closeCancelModal();
+        if (reschModal && event.target == reschModal) closeRescheduleModal();
+        if (reviewModal && event.target == reviewModal) closeReviewModal();
+    };
+</script>
+
+
+
+{% endblock %}

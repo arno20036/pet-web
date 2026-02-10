@@ -1,0 +1,360 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<div style="padding: 20px; background-color: #f3f4f6; min-height: 100vh;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+        <h2 style="margin: 0; color: #1f2937; font-weight: 700;">數據統計中心</h2>
+    </div>
+
+    <!-- Date Filter Card -->
+    <div class="card"
+        style="margin-bottom: 25px; padding: 24px; border-radius: 12px; border: none; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <form action="{{ url_for('admin_statistics_dashboard') }}" method="get"
+            style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <label for="start_date"
+                    style="display: block; margin-bottom: 8px; font-weight: 600; color: #4b5563; font-size: 0.85rem;">開始日期</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control"
+                    style="width: 100%; border-radius: 8px; border: 1px solid #d1d5db; padding: 10px;" required>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <label for="end_date"
+                    style="display: block; margin-bottom: 8px; font-weight: 600; color: #4b5563; font-size: 0.85rem;">結束日期</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control"
+                    style="width: 100%; border-radius: 8px; border: 1px solid #d1d5db; padding: 10px;" required>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-primary"
+                    style="padding: 10px 24px; border-radius: 8px; font-weight: 600; transition: all 0.2s;">篩選數據</button>
+                <a href="{{ url_for('admin_statistics_dashboard') }}" class="btn"
+                    style="background-color: #ffffff; color: #4b5563; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.2s;">近
+                    30 日</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Summary Numbers -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 30px;">
+        <div class="card"
+            style="padding: 24px; border-radius: 12px; border: none; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                <span style="color: #6b7280; font-weight: 600; font-size: 0.9rem;">總交易金額</span>
+                <i class="fas fa-hand-holding-usd" style="color: #3b82f6; font-size: 1.2rem;"></i>
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: #111827;">NT$ {{ "{:,}".format(total_amount | int)
+                }}</div>
+        </div>
+        <div class="card"
+            style="padding: 24px; border-radius: 12px; border: none; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                <span style="color: #6b7280; font-weight: 600; font-size: 0.9rem;">平台淨收益</span>
+                <i class="fas fa-chart-pie" style="color: #10b981; font-size: 1.2rem;"></i>
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: #065f46;">NT$ {{ "{:,}".format(net_revenue | int) }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Combined Rates Chart -->
+    <div class="card"
+        style="padding: 24px; margin-bottom: 30px; border-radius: 16px; border: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); background-color: #ffffff;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px;">
+            <div style="width: 4px; height: 20px; background-color: #3b82f6; border-radius: 2px;"></div>
+            <h4 style="margin: 0; font-size: 1.1rem; color: #1f2937; font-weight: 700;">營運績效關鍵指標 (%)</h4>
+        </div>
+        <div style="height: 380px;">
+            <canvas id="keyMetricsChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Charts Row 2: Pets & Time -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 30px; margin-bottom: 30px;">
+        <div class="card"
+            style="padding: 24px; border-radius: 16px; border: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); background-color: #ffffff;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px;">
+                <div style="width: 4px; height: 20px; background-color: #f59e0b; border-radius: 2px;"></div>
+                <h4 style="margin: 0; font-size: 1.1rem; color: #1f2937; font-weight: 700;">寵物服務分佈</h4>
+            </div>
+            <div style="height: 320px; display: flex; justify-content: center;">
+                <canvas id="petChart"></canvas>
+            </div>
+        </div>
+        <div class="card"
+            style="padding: 24px; border-radius: 16px; border: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); background-color: #ffffff;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px;">
+                <div style="width: 4px; height: 20px; background-color: #8b5cf6; border-radius: 2px;"></div>
+                <h4 style="margin: 0; font-size: 1.1rem; color: #1f2937; font-weight: 700;">時段分布分析</h4>
+            </div>
+            <div style="height: 320px;">
+                <canvas id="timeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rankings Section -->
+    <div style="margin-top: 50px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
+        <h3 style="margin: 0; color: #1f2937; font-weight: 800; font-size: 1.4rem;">訓練師大數據排行 (TOP 10)</h3>
+        <div style="flex-grow: 1; height: 1px; background-color: #d1d5db;"></div>
+    </div>
+
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 26px; margin-bottom: 50px;">
+        <!-- Ranking 1: Completed Orders -->
+        <div class="card"
+            style="padding: 24px; border-radius: 16px; border: none; shadow: 0 4px 6px rgba(0,0,0,0.05); background-color: #ffffff;">
+            <h5 style="text-align: center; color: #4b5563; margin-bottom: 20px; font-weight: 700;">訂單完成排行</h5>
+            <div style="height: 300px;">
+                <canvas id="rankCompletedChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Ranking 2: Revenue -->
+        <div class="card"
+            style="padding: 24px; border-radius: 16px; border: none; shadow: 0 4px 6px rgba(0,0,0,0.05); background-color: #ffffff;">
+            <h5 style="text-align: center; color: #4b5563; margin-bottom: 20px; font-weight: 700;">總交易金額排行</h5>
+            <div style="height: 300px;">
+                <canvas id="rankRevenueChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Ranking 3: Rejected Orders -->
+        <div class="card"
+            style="padding: 24px; border-radius: 16px; border: none; shadow: 0 4px 6px rgba(0,0,0,0.05); background-color: #ffffff;">
+            <h5 style="text-align: center; color: #4b5563; margin-bottom: 20px; font-weight: 700;">訂單拒絕排行</h5>
+            <div style="height: 300px;">
+                <canvas id="rankRejectedChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Ranking 4: Appeals -->
+        <div class="card"
+            style="padding: 24px; border-radius: 16px; border: none; shadow: 0 4px 6px rgba(0,0,0,0.05); background-color: #ffffff;">
+            <h5 style="text-align: center; color: #4b5563; margin-bottom: 20px; font-weight: 700;">顧客申訴次數監控</h5>
+            <div style="height: 300px;">
+                <canvas id="rankAppealChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // --- Helper Functions for Aesthetics ---
+    const getGradient = (ctx, chartArea, colorStart, colorEnd) => {
+        const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+        gradient.addColorStop(0, colorStart);
+        gradient.addColorStop(1, colorEnd);
+        return gradient;
+    };
+
+    // 1. Key Metrics Chart (Combined)
+    new Chart(document.getElementById('keyMetricsChart'), {
+        type: 'bar',
+        data: {
+            labels: ['訂單完成率', '訂單申訴率', '消費者留存率'],
+            datasets: [{
+                data: [{{ completion_rate }}, {{ appeal_rate }}, {{ retention_rate }}],
+        backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return null;
+            const colors = [
+                ['#60a5fa', '#3b82f6'], // Blue
+                ['#f87171', '#ef4444'], // Red
+                ['#34d399', '#10b981']  // Green
+            ];
+            return getGradient(ctx, chartArea, colors[context.dataIndex][0], colors[context.dataIndex][1]);
+        },
+        borderRadius: 10,
+        borderSkipped: false,
+        barThickness: 60,
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                grid: { color: '#f3f4f6' },
+                ticks: { callback: value => value + '%' }
+            },
+            x: { grid: { display: false } }
+        },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(31, 41, 55, 0.9)',
+                padding: 12,
+                cornerRadius: 8,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 },
+                callbacks: {
+                    label: function(context) {
+                        const idx = context.dataIndex;
+                        const pct = context.parsed.y;
+                        // Raw counts passed from backend
+                        const rawCounts = [
+                            { count: {{ completed_orders }}, total: {{ total_orders }}, unit: '筆訂單' },
+                            { count: {{ appeals_count }}, total: {{ total_orders }}, unit: '筆訂單' },
+                            { count: {{ repeat_buyers_count }}, total: {{ total_buyers_count }}, unit: '位消費者' }
+                        ];
+                        const info = rawCounts[idx];
+                        return `${pct}% (${info.count} / ${info.total} ${info.unit})`;
+                    }
+                }
+            }
+        }
+    }
+    });
+
+    // 4. Pet Types (Pie)
+    new Chart(document.getElementById('petChart'), {
+        type: 'doughnut', // Better aesthetic than pie
+        data: {
+            labels: {{ pet_labels | tojson }},
+        datasets: [{
+            data: {{ pet_data | tojson }},
+        backgroundColor: [
+            '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'
+        ],
+        borderWidth: 2,
+        borderColor: '#ffffff',
+        hoverOffset: 15
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+            legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, font: { size: 12 } } },
+            tooltip: { backgroundColor: 'rgba(31, 41, 55, 0.9)', padding: 12, cornerRadius: 8 }
+        }
+    }
+    });
+
+    // 5. Time Slots (Bar - Ongoing Orders)
+    new Chart(document.getElementById('timeChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ time_labels | tojson }},
+        datasets: [
+        {
+            label: '正在進行中的訂單',
+            data: {{ ongoing_orders_data | tojson }},
+        backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return null;
+            return getGradient(ctx, chartArea, '#8b5cf6', '#7c3aed'); // Violet gradient
+        },
+        borderRadius: 6,
+        barThickness: 'flex',
+        maxBarThickness: 30
+                }
+    ]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                grid: { color: '#f3f4f6' },
+                title: { display: true, text: '訂單數量' }
+            },
+            x: {
+                grid: { display: false },
+                ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 }
+            }
+        },
+        plugins: {
+            legend: { display: false }, // Single dataset, no legend needed
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(31, 41, 55, 0.9)',
+                padding: 12,
+                callbacks: {
+                    title: function (context) {
+                        let label = context[0].label;
+                        if (label && label.length === 5) {
+                            return label + '~' + label.split(':')[0] + ':59';
+                        }
+                        return label;
+                    },
+                    label: function (context) {
+                        return `正在進行: ${context.parsed.y} 筆`;
+                    }
+                }
+            }
+        }
+    }
+    });
+
+    // --- Rankings Common Setup ---
+    const rankColors = {
+        blue: ['#60a5fa', '#3b82f6'],
+        green: ['#34d399', '#10b981'],
+        gray: ['#9ca3af', '#4b5563'],
+        red: ['#f87171', '#ef4444']
+    };
+
+    const createRankChart = (id, labels, data, colorKey, labelName) => {
+        return new Chart(document.getElementById(id), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: labelName,
+                    data: data,
+                    backgroundColor: (context) => {
+                        const chart = context.chart;
+                        const { ctx, chartArea } = chart;
+                        if (!chartArea) return null;
+                        const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0); // Horizontal gradient
+                        gradient.addColorStop(0, rankColors[colorKey][0]);
+                        gradient.addColorStop(1, rankColors[colorKey][1]);
+                        return gradient;
+                    },
+                    borderRadius: 5,
+                    barThickness: 15
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { beginAtZero: true, grid: { color: '#f3f4f6' } },
+                    y: { grid: { display: false }, ticks: { font: { weight: '600' } } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { backgroundColor: 'rgba(31, 41, 55, 0.9)', cornerRadius: 8 }
+                }
+            }
+        });
+    };
+
+    {% set comp_names = rank_completed | map(attribute = 'trainer_name') | list %}
+    {% set comp_vals = rank_completed | map(attribute = 'completed_count') | list %}
+    {% set rev_names = rank_revenue | map(attribute = 'trainer_name') | list %}
+    {% set rev_vals = rank_revenue | map(attribute = 'revenue') | list %}
+    {% set rej_names = rank_rejected | map(attribute = 'trainer_name') | list %}
+    {% set rej_vals = rank_rejected | map(attribute = 'rejected_count') | list %}
+    {% set app_names = rank_appealed | map(attribute = 'trainer_name') | list %}
+    {% set app_vals = rank_appealed | map(attribute = 'appeal_count') | list %}
+
+    createRankChart('rankCompletedChart', {{ comp_names | tojson }}, {{ comp_vals | tojson }}, 'blue', '完成數');
+    createRankChart('rankRevenueChart', {{ rev_names | tojson }}, {{ rev_vals | tojson }}, 'green', '營收 NT$');
+    createRankChart('rankRejectedChart', {{ rej_names | tojson }}, {{ rej_vals | tojson }}, 'gray', '拒絕數');
+    createRankChart('rankAppealChart', {{ app_names | tojson }}, {{ app_vals | tojson }}, 'red', '申訴數');
+
+</script>
+{% endblock %}

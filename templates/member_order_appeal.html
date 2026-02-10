@@ -1,0 +1,93 @@
+{% extends 'member_layout.html' %}
+
+{% block member_content %}
+<div class="card">
+    <div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+        <h2 style="margin: 0;"><i class="fas fa-exclamation-circle"></i> 訂單申訴與求助</h2>
+        <p style="color: #666; margin: 5px 0 0 0;">訂單編號: #{{ order.id }}</p>
+    </div>
+
+    <!-- Order Summary -->
+    <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 25px;">
+        <h4 style="margin: 0 0 15px 0;">訂單資訊</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+            <div class="form-group">
+                <label
+                    style="display: block; font-weight: 500; font-size: 0.9rem; color: #666; margin-bottom: 5px;">寵物</label>
+                <input type="text" class="form-control" value="{{ order.pet_name }} ({{ order.pet_type }})" readonly
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background-color: #f3f4f6; color: #4b5563;">
+            </div>
+            <div class="form-group">
+                <label
+                    style="display: block; font-weight: 500; font-size: 0.9rem; color: #666; margin-bottom: 5px;">訓練師</label>
+                <input type="text" class="form-control" value="{{ order.trainer_nickname or order.trainer_name }}"
+                    readonly
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background-color: #f3f4f6; color: #4b5563;">
+            </div>
+            <div class="form-group">
+                <label
+                    style="display: block; font-weight: 500; font-size: 0.9rem; color: #666; margin-bottom: 5px;">預約時間</label>
+                <input type="text" class="form-control" value="{{ order.booking_date }} {{ order.time_range }}" readonly
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background-color: #f3f4f6; color: #4b5563;">
+            </div>
+            <div class="form-group">
+                <label
+                    style="display: block; font-weight: 500; font-size: 0.9rem; color: #666; margin-bottom: 5px;">金額</label>
+                <input type="text" class="form-control" value="${{ order.total_price }}" readonly
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background-color: #f3f4f6; color: #4b5563;">
+            </div>
+        </div>
+    </div>
+
+    <form method="post" id="appealForm">
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px;">申訴原因 /求助類型</label>
+            <select name="reason" class="form-control" required
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                <option value="">請選擇...</option>
+                <option value="trainer_absent">訓練師未出席</option>
+                <option value="service_quality">服務品質不佳</option>
+                <option value="refund_request">退款申請</option>
+                <option value="accident">發生意外/事故</option>
+                <option value="other">其他問題</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 25px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px;">詳細說明</label>
+            <p style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">請詳細描述發生的情況，以及您希望平台如何協助您。</p>
+            <textarea name="description" required
+                style="width: 100%; height: 150px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; resize: none;"
+                placeholder="請輸入詳細內容..."></textarea>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <a href="{{ url_for('member_orders') }}" class="btn btn-ghost">取消</a>
+            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                <i class="fas fa-paper-plane"></i> 提交申訴
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    document.getElementById('appealForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        Swal.fire({
+            title: '確定提交申訴？',
+            text: "提交後客服將會儘快為您處理，請確認內容無誤。",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: '確定提交',
+            cancelButtonText: '再檢查一下'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                this.submit();
+            }
+        });
+    });
+</script>
+{% endblock %}
