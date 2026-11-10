@@ -26,7 +26,7 @@
                     <td>
                         <div style="display: flex; align-items: center; gap: 10px;">
                             {% if item['avatar'] %}
-                            <img src="{{ url_for('uploaded_file', filename=item['avatar']) }}"
+                            <img src="{{ url_for('main.uploaded_file', filename=item['avatar']) }}"
                                 style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
                             {% else %}
                             <div

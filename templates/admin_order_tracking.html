@@ -115,7 +115,7 @@
                     <p><strong>付款期限：</strong>{{ order.payment_deadline }}</p>
                     {% endif %}
                     {% if order.payment_confirmed == 0 %}
-                    <form method="post" action="{{ url_for('admin_confirm_payment', order_id=order.id) }}"
+                    <form method="post" action="{{ url_for('admin.admin_confirm_payment', order_id=order.id) }}"
                         style="margin-top: 10px;" onsubmit="return confirm('確定確認收款？此操作無法復原。');">
                         <button type="submit" class="btn btn-primary btn-sm"
                             style="background: var(--primary-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">

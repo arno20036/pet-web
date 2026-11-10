@@ -4,7 +4,6 @@ Routes needing an id get one from the (copied) database at test time.
 If no suitable row exists, the case is skipped rather than failed.
 """
 import re
-from pathlib import Path
 
 import pytest
 from flask import template_rendered

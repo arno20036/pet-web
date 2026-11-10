@@ -3,7 +3,7 @@
 {% block member_content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
     <h2 style="margin: 0;"><i class="fas fa-file-alt"></i> 我的申訴案件 #{{ appeal.id }}</h2>
-    <a href="{{ url_for('member_orders') }}" class="btn btn-outline"
+    <a href="{{ url_for('member.member_orders') }}" class="btn btn-outline"
         style="padding: 8px 20px; border-radius: 20px; border: 1px solid #ccc;">
         <i class="fas fa-arrow-left me-1"></i> 返回訂單
     </a>

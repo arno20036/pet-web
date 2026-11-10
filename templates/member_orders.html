@@ -7,7 +7,7 @@
 <div
     style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
     <div style="font-weight: 600; color: #4b5563;"><i class="fas fa-filter"></i> 篩選預約日期:</div>
-    <form action="{{ url_for('member_orders') }}" method="GET"
+    <form action="{{ url_for('member.member_orders') }}" method="GET"
         style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0;">
         <div style="display: flex; align-items: center; gap: 5px;">
             <label for="start_date" style="color: #666; font-size: 0.9rem;">從</label>
@@ -24,7 +24,7 @@
             查詢
         </button>
         {% if request.args.get('start_date') or request.args.get('end_date') %}
-        <a href="{{ url_for('member_orders') }}" class="btn btn-outline btn-sm"
+        <a href="{{ url_for('member.member_orders') }}" class="btn btn-outline btn-sm"
             style="color: #666; text-decoration: none; border: 1px solid #ccc; padding: 5px 12px; border-radius: 6px;">
             清除
         </a>
@@ -119,7 +119,7 @@
                         style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 3px;">
                         <i class="fas fa-undo"></i> 待退款 ${{ order.paid_amount - order.total_price }}
                     </span>
-                    <a href="{{ url_for('member_profile') }}" class="btn btn-sm btn-outline-primary"
+                    <a href="{{ url_for('member.member_profile') }}" class="btn btn-sm btn-outline-primary"
                         style="margin-left: 5px; font-size: 0.8rem; padding: 2px 8px;">
                         <i class="fas fa-university"></i> 設定退款帳戶
                     </a>
@@ -133,7 +133,7 @@
                         <i class="fas fa-exclamation-triangle"></i> 需要補款
                     </span><br>
                     {% endif %}
-                    <a href="{{ url_for('member_payment', order_id=order.id) }}" class="btn btn-primary btn-sm"
+                    <a href="{{ url_for('member.member_payment', order_id=order.id) }}" class="btn btn-primary btn-sm"
                         style="background: var(--primary-color); color: white; border: none; white-space: nowrap; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                         <i class="fas fa-credit-card"></i> {% if order.paid_amount and order.paid_amount > 0 %}立即補款{%
                         else %}立即付款{% endif %}
@@ -173,7 +173,7 @@
                         class="fas fa-comments"></i> 聯絡訓練師</button>
 
                 {% if order.appeal_status %}
-                <a href="{{ url_for('member_appeal_detail', appeal_id=order.appeal_id) }}" class="btn btn-sm"
+                <a href="{{ url_for('member.member_appeal_detail', appeal_id=order.appeal_id) }}" class="btn btn-sm"
                     style="border: 1px solid #ccc; background: #f8f9fa; color: #666; text-decoration: none; white-space: nowrap;">
                     {% if order.appeal_status == 'pending' %}
                     <i class="fas fa-clock text-warning"></i> 申訴處理中
@@ -186,7 +186,7 @@
                     {% endif %}
                 </a>
                 {% else %}
-                <a href="{{ url_for('member_order_appeal', order_id=order.id) }}" class="btn btn-outline btn-sm"
+                <a href="{{ url_for('member.member_order_appeal', order_id=order.id) }}" class="btn btn-outline btn-sm"
                     style="border-color: #f59e0b; color: #f59e0b; white-space: nowrap;">
                     <i class="fas fa-exclamation-circle"></i> 申訴/求助
                 </a>
@@ -424,7 +424,7 @@
                 class="fas fa-comments"></i> 查看留言</button>
 
         {% if order.appeal_status %}
-        <a href="{{ url_for('member_appeal_detail', appeal_id=order.appeal_id) }}" class="btn btn-sm"
+        <a href="{{ url_for('member.member_appeal_detail', appeal_id=order.appeal_id) }}" class="btn btn-sm"
             style="border: 1px solid #ccc; background: #f8f9fa; color: #666; text-decoration: none; white-space: nowrap;">
             {% if order.appeal_status == 'pending' %}
             <i class="fas fa-clock text-warning"></i> 申訴處理中
@@ -437,7 +437,7 @@
             {% endif %}
         </a>
         {% else %}
-        <a href="{{ url_for('member_order_appeal', order_id=order.id) }}" class="btn btn-outline btn-sm"
+        <a href="{{ url_for('member.member_order_appeal', order_id=order.id) }}" class="btn btn-outline btn-sm"
             style="border-color: #f59e0b; color: #f59e0b; white-space: nowrap;">
             <i class="fas fa-exclamation-circle"></i> 申訴/求助
         </a>

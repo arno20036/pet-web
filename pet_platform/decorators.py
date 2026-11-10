@@ -12,7 +12,7 @@ def login_required(view=None, *, json=False):
             if 'user_id' not in session:
                 if json:
                     return {'error': 'Unauthorized'}, 401
-                return redirect(url_for('login'))
+                return redirect(url_for('auth.login'))
             return f(*args, **kwargs)
         return wrapped
 
@@ -21,7 +21,7 @@ def login_required(view=None, *, json=False):
     return decorator
 
 
-def role_required(*roles, json=False, status=403, redirect_to='index'):
+def role_required(*roles, json=False, status=403, redirect_to='main.index'):
     """Wrong role (or not logged in) -> redirect to `redirect_to`, or JSON error with `status`.
 
     The role is only ever set at login together with user_id, so checking both is

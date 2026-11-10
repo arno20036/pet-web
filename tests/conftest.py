@@ -1,14 +1,14 @@
 """Shared pytest fixtures.
 
 Every test runs against a *copy* of database.db in tmp_path, never the original.
-The `app` fixture works both before step 2 (module-level `app` in app.py,
-database path in app.config['DATABASE']) and after it (pet_platform.create_app()).
 """
 import shutil
 import sqlite3
 from pathlib import Path
 
 import pytest
+
+from pet_platform import create_app
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SOURCE_DB = PROJECT_ROOT / 'database.db'
@@ -21,22 +21,6 @@ ACCOUNTS = {
 }
 
 
-def _build_app(db_path, monkeypatch):
-    try:
-        from pet_platform import create_app  # after step 2
-    except ImportError:
-        create_app = None
-
-    if create_app is not None:
-        flask_app = create_app({'TESTING': True, 'DATABASE': str(db_path)})
-    else:
-        import app as app_module  # before step 2
-        flask_app = app_module.app
-        monkeypatch.setitem(flask_app.config, 'DATABASE', str(db_path))
-        monkeypatch.setitem(flask_app.config, 'TESTING', True)
-    return flask_app
-
-
 @pytest.fixture
 def db_path(tmp_path):
     dst = tmp_path / 'database.db'
@@ -45,10 +29,8 @@ def db_path(tmp_path):
 
 
 @pytest.fixture
-def app(db_path, monkeypatch):
-    # UPLOAD_FOLDER is relative ('uploads'), so run from the project root.
-    monkeypatch.chdir(PROJECT_ROOT)
-    return _build_app(db_path, monkeypatch)
+def app(db_path):
+    return create_app({'TESTING': True, 'DATABASE': str(db_path)})
 
 
 @pytest.fixture

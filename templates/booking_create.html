@@ -9,7 +9,7 @@
             <div class="listing-summary mb-4" style="background: #f8fafc; padding: 20px; border-radius: 8px;">
                 <div style="display: flex; gap: 20px; align-items: start;">
                     {% if listing.pet_image %}
-                    <img src="{{ url_for('uploaded_file', filename=listing.pet_image) }}" alt="Cover"
+                    <img src="{{ url_for('main.uploaded_file', filename=listing.pet_image) }}" alt="Cover"
                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
                     {% endif %}
                     <div>

@@ -601,7 +601,7 @@
         // Check if logged in
         {% if not session.get('user_id') %}
         // If not logged in, redirect to login page with return
-        window.location.href = "{{ url_for('login') }}?next=" + encodeURIComponent(window.location.pathname);
+        window.location.href = "{{ url_for('auth.login') }}?next=" + encodeURIComponent(window.location.pathname);
         return;
         {% endif %}
 

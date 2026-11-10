@@ -8,7 +8,7 @@
 <!-- Navigation Tabs -->
 <ul style="display: flex; list-style: none; padding: 0; margin: 0 0 24px 0; border-bottom: 2px solid #e2e8f0;">
     <li style="margin-right: 2px;">
-        <a href="{{ url_for('admin_refunds', status='supplement', trip_date=trip_date) }}"
+        <a href="{{ url_for('admin.admin_refunds', status='supplement', trip_date=trip_date) }}"
             style="display: flex; align-items: center; padding: 12px 24px; font-weight: 600; text-decoration: none; border-bottom: 2px solid {% if status == 'supplement' %}#d97706{% else %}transparent{% endif %}; color: {% if status == 'supplement' %}#d97706{% else %}#64748b{% endif %}; transition: all 0.2s;">
             <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i> 待補款
             {% if sidebar_counts.get('admin_tab_supplement_count', 0) > 0 %}
@@ -19,13 +19,13 @@
         </a>
     </li>
     <li style="margin-right: 2px;">
-        <a href="{{ url_for('admin_refunds', status='supplement_completed', trip_date=trip_date) }}"
+        <a href="{{ url_for('admin.admin_refunds', status='supplement_completed', trip_date=trip_date) }}"
             style="display: flex; align-items: center; padding: 12px 24px; font-weight: 600; text-decoration: none; border-bottom: 2px solid {% if status == 'supplement_completed' %}#4f46e5{% else %}transparent{% endif %}; color: {% if status == 'supplement_completed' %}#4f46e5{% else %}#64748b{% endif %}; transition: all 0.2s;">
             <i class="fas fa-history" style="margin-right: 8px;"></i> 已補款紀錄
         </a>
     </li>
     <li style="margin-right: 2px;">
-        <a href="{{ url_for('admin_refunds', status='pending', trip_date=trip_date) }}"
+        <a href="{{ url_for('admin.admin_refunds', status='pending', trip_date=trip_date) }}"
             style="display: flex; align-items: center; padding: 12px 24px; font-weight: 600; text-decoration: none; border-bottom: 2px solid {% if status == 'pending' %}var(--primary-color){% else %}transparent{% endif %}; color: {% if status == 'pending' %}var(--primary-color){% else %}#64748b{% endif %}; transition: all 0.2s;">
             <i class="fas fa-clock" style="margin-right: 8px;"></i> 待處理退款
             {% if sidebar_counts.get('admin_tab_refund_count', 0) > 0 %}
@@ -36,7 +36,7 @@
         </a>
     </li>
     <li style="margin-right: 2px;">
-        <a href="{{ url_for('admin_refunds', status='processed', trip_date=trip_date) }}"
+        <a href="{{ url_for('admin.admin_refunds', status='processed', trip_date=trip_date) }}"
             style="display: flex; align-items: center; padding: 12px 24px; font-weight: 600; text-decoration: none; border-bottom: 2px solid {% if status == 'processed' %}#10b981{% else %}transparent{% endif %}; color: {% if status == 'processed' %}#10b981{% else %}#64748b{% endif %}; transition: all 0.2s;">
             <i class="fas fa-check-circle" style="margin-right: 8px;"></i> 已完成退款
         </a>
@@ -44,7 +44,7 @@
 </ul>
 
 <!-- Date Filter Form -->
-<form action="{{ url_for('admin_refunds') }}" method="get"
+<form action="{{ url_for('admin.admin_refunds') }}" method="get"
     style="display: flex; flex-direction: row; align-items: center; flex-wrap: nowrap; background: white; padding: 10px 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; width: fit-content; margin-bottom: 24px;">
     <input type="hidden" name="status" value="{{ status }}">
     <label for="trip_date"
@@ -56,7 +56,7 @@
         <i class="fas fa-filter" style="margin-right: 6px;"></i> 篩選
     </button>
     {% if trip_date %}
-    <a href="{{ url_for('admin_refunds', status=status) }}" class="btn btn-outline-secondary"
+    <a href="{{ url_for('admin.admin_refunds', status=status) }}" class="btn btn-outline-secondary"
         style="height: 38px; padding: 0 16px; margin-left: 8px; display: flex; align-items: center; color: #64748b; border-color: #cbd5e1; background: white; white-space: nowrap;">
         清除
     </a>
@@ -105,19 +105,19 @@
                         <i class="fas fa-calendar-alt" style="margin-right: 6px;"></i> 行程日期: {{ task.booking_date }}
                         <span style="margin: 0 8px; color: #cbd5e1;">|</span>
                         <i class="fas fa-shopping-cart" style="margin-right: 6px;"></i>
-                        <a href="{{ url_for('admin_order_tracking') }}#order-{{ task.order_id }}"
+                        <a href="{{ url_for('admin.admin_order_tracking') }}#order-{{ task.order_id }}"
                             style="color: var(--primary-color); text-decoration: none; font-weight: 500;">
                             訂單 #{{ task.order_id }} <i class="fas fa-external-link-alt" style="font-size: 0.8rem;"></i>
                         </a>
                     </div>
                 </div>
                 {% if task.type == 'supplement' or task.type == 'supplement_completed' %}
-                <a href="{{ url_for('admin_order_tracking') }}#order-{{ task.order_id }}"
+                <a href="{{ url_for('admin.admin_order_tracking') }}#order-{{ task.order_id }}"
                     class="btn btn-outline-primary btn-sm">
                     <i class="fas fa-eye"></i> 查看詳情
                 </a>
                 {% elif task.status == 'pending' %}
-                <form method="post" action="{{ url_for('admin_process_refund', task_id=task.id) }}"
+                <form method="post" action="{{ url_for('admin.admin_process_refund', task_id=task.id) }}"
                     onsubmit="return confirm('確定已完成此筆退款？');">
                     <button type="submit" class="btn btn-primary"
                         style="background: var(--primary-color); border: none; padding: 8px 20px; font-weight: 500;">

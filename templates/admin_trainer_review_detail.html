@@ -4,7 +4,7 @@
 <h2>申請詳情 - {{ app['name'] }}</h2>
 <div class="card">
     <div style="margin-bottom: 20px;">
-        <a href="{{ url_for('admin_trainer_review') }}" style="color: var(--text-muted); text-decoration: none;">&larr; 返回列表</a>
+        <a href="{{ url_for('admin.admin_trainer_review') }}" style="color: var(--text-muted); text-decoration: none;">&larr; 返回列表</a>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
@@ -51,7 +51,7 @@
             <div class="form-group">
                 <label>證照檔案</label>
                 <div style="margin-top: 10px;">
-                    <a href="{{ url_for('uploaded_file', filename=app['certificate_filename']) }}" target="_blank" class="btn btn-outline" style="display: block; text-align: center;">查看證照檔案</a>
+                    <a href="{{ url_for('main.uploaded_file', filename=app['certificate_filename']) }}" target="_blank" class="btn btn-outline" style="display: block; text-align: center;">查看證照檔案</a>
                 </div>
             </div>
         </div>
@@ -60,10 +60,10 @@
     <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
     
     <div style="display: flex; gap: 10px;">
-        <form action="{{ url_for('admin_approve_application', app_id=app['id']) }}" method="post" style="display: inline;">
+        <form action="{{ url_for('admin.admin_approve_application', app_id=app['id']) }}" method="post" style="display: inline;">
             <button type="submit" class="btn btn-primary" onclick="return confirm('確定要通過審核嗎？此操作將會把該會員升級為訓練師。')">通過審核</button>
         </form>
-        <form action="{{ url_for('admin_reject_application', app_id=app['id']) }}" method="post" style="display: inline;">
+        <form action="{{ url_for('admin.admin_reject_application', app_id=app['id']) }}" method="post" style="display: inline;">
             <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;" onclick="return confirm('確定要駁回申請嗎？')">駁回申請</button>
         </form>
     </div>

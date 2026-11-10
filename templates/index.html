@@ -16,7 +16,7 @@
 
     <!-- Search Form -->
     <div style="max-width: 600px; margin: 30px auto;">
-        <form action="{{ url_for('index') }}" method="get" style="display: flex; gap: 10px;">
+        <form action="{{ url_for('main.index') }}" method="get" style="display: flex; gap: 10px;">
             <input type="text" name="q" value="{{ query }}" placeholder="搜尋寵物類型、品種或關鍵字..." class="form-control"
                 style="flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc;">
             <input type="hidden" name="category" id="categoryInput" value="{{ category }}">
@@ -25,21 +25,21 @@
 
         <!-- Category Tabs -->
         <div style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
-            <a href="{{ url_for('index') }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
+            <a href="{{ url_for('main.index') }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
                       {% if not category %}background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.4);
                       {% else %}background: #f3f4f6; color: #666; border: 1px solid #e5e7eb;{% endif %}"
                 onmouseover="this.style.transform='translateY(-3px) scale(1.05)'; {% if not category %}this.style.boxShadow='0 8px 20px rgba(59,130,246,0.5)';{% else %}this.style.boxShadow='0 6px 15px rgba(0,0,0,0.15)'; this.style.background='#e5e7eb';{% endif %}"
                 onmouseout="this.style.transform='translateY(0) scale(1)'; {% if not category %}this.style.boxShadow='0 4px 12px rgba(59,130,246,0.4)';{% else %}this.style.boxShadow='none'; this.style.background='#f3f4f6';{% endif %}">
                 <i class="fas fa-paw"></i> 全部寵物
             </a>
-            <a href="{{ url_for('index', category='dog', q=query) }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
+            <a href="{{ url_for('main.index', category='dog', q=query) }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
                       {% if category == 'dog' %}background: linear-gradient(135deg, #f59e0b, #d97706); color: white; box-shadow: 0 4px 12px rgba(245,158,11,0.4);
                       {% else %}background: #f3f4f6; color: #666; border: 1px solid #e5e7eb;{% endif %}"
                 onmouseover="this.style.transform='translateY(-3px) scale(1.05)'; {% if category == 'dog' %}this.style.boxShadow='0 8px 20px rgba(245,158,11,0.5)';{% else %}this.style.boxShadow='0 6px 15px rgba(0,0,0,0.15)'; this.style.background='#e5e7eb';{% endif %}"
                 onmouseout="this.style.transform='translateY(0) scale(1)'; {% if category == 'dog' %}this.style.boxShadow='0 4px 12px rgba(245,158,11,0.4)';{% else %}this.style.boxShadow='none'; this.style.background='#f3f4f6';{% endif %}">
                 <i class="fas fa-dog"></i> 狗
             </a>
-            <a href="{{ url_for('index', category='cat', q=query) }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
+            <a href="{{ url_for('main.index', category='cat', q=query) }}" style="padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: 500; transition: all 0.3s ease;
                       {% if category == 'cat' %}background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; box-shadow: 0 4px 12px rgba(139,92,246,0.4);
                       {% else %}background: #f3f4f6; color: #666; border: 1px solid #e5e7eb;{% endif %}"
                 onmouseover="this.style.transform='translateY(-3px) scale(1.05)'; {% if category == 'cat' %}this.style.boxShadow='0 8px 20px rgba(139,92,246,0.5)';{% else %}this.style.boxShadow='0 6px 15px rgba(0,0,0,0.15)'; this.style.background='#e5e7eb';{% endif %}"
@@ -90,15 +90,15 @@
 
                     <!-- Image -->
                     <div style="height: 180px; overflow: hidden;">
-                        <a href="{{ url_for('listing_detail', listing_id=item['id']) }}">
-                            <img src="{{ url_for('uploaded_file', filename=item['pet_image']) }}"
+                        <a href="{{ url_for('main.listing_detail', listing_id=item['id']) }}">
+                            <img src="{{ url_for('main.uploaded_file', filename=item['pet_image']) }}"
                                 style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease;">
                         </a>
                     </div>
 
                     <div style="padding: 16px;">
                         <h4 style="margin: 0 0 8px 0; font-weight: bold; color: #333; font-size: 1rem;">
-                            <a href="{{ url_for('listing_detail', listing_id=item['id']) }}"
+                            <a href="{{ url_for('main.listing_detail', listing_id=item['id']) }}"
                                 style="text-decoration: none; color: inherit;">
                                 {{ item['pet_name'] or '未命名寵物' }}
                             </a>
@@ -185,14 +185,14 @@
                 onmouseover="this.style.transform='translateY(-8px)'; this.style.boxShadow='0 12px 24px rgba(0,0,0,0.15)'; this.querySelector('img').style.transform='scale(1.1)';"
                 onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 5px rgba(0,0,0,0.05)'; this.querySelector('img').style.transform='scale(1)';">
                 <div style="height: 200px; overflow: hidden;">
-                    <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}">
-                        <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+                    <a href="{{ url_for('main.listing_detail', listing_id=listing['id']) }}">
+                        <img src="{{ url_for('main.uploaded_file', filename=listing['pet_image']) }}"
                             style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease;">
                     </a>
                 </div>
                 <div style="padding: 20px;">
                     <h4 style="margin-top: 0; margin-bottom: 10px; font-weight: bold; color: #333;">
-                        <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}"
+                        <a href="{{ url_for('main.listing_detail', listing_id=listing['id']) }}"
                             style="text-decoration: none; color: inherit;">
                             {{ listing['pet_name'] or '未命名寵物' }}
                         </a>
