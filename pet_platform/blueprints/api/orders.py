@@ -16,7 +16,7 @@ def api_reschedule_order(order_id):
     new_date = data.get('date')
     new_time = data.get('time')
     new_duration = int(data.get('duration', 1))
-    
+
     if not all([new_date, new_time, new_duration]):
         return {'error': 'Missing fields'}, 400
 
@@ -65,10 +65,10 @@ def api_cancel_order(order_id):
 def get_admin_refund_task(order_id):
     conn = get_db()
     task = conn.execute('SELECT * FROM refund_tasks WHERE order_id = ? ORDER BY created_at DESC LIMIT 1', (order_id,)).fetchone()
-    
+
     if not task:
         return {'error': 'Refund task not found'}, 404
-        
+
     return {'task': dict(task)}
 
 @bp.route('/api/admin/refund-task/<int:task_id>/process', methods=['POST'])

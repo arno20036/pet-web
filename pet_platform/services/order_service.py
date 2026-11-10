@@ -173,7 +173,8 @@ def create_booking(listing, buyer_id, booking_date, start_time, end_time, locati
 # ---------------------------------------------------------------------------
 
 def monthly_cancel_count(buyer_id):
-    start_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Same text the old implicit datetime adapter produced ("YYYY-MM-DD 00:00:00").
+    start_of_month = datetime.now().strftime('%Y-%m-01 00:00:00')
     return get_db().execute('''
         SELECT COUNT(*) FROM orders
         WHERE buyer_id = ? AND status = 'cancelled' AND updated_at >= ?

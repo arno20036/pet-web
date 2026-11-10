@@ -18,7 +18,7 @@ def submit_review():
     order_id = data.get('order_id')
     rating = data.get('rating')
     comment = data.get('comment', '')
-    
+
     if not order_id or not rating:
         return {'error': 'Missing required fields'}, 400
 
@@ -44,5 +44,5 @@ def get_user_reviews(user_id):
     '''
     params = (user_id,)
     reviews = conn.execute(query, params).fetchall()
-    
+
     return {'reviews': [dict(r) for r in reviews]}

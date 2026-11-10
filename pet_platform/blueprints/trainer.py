@@ -22,28 +22,28 @@ def trainer_create_listing():
         pet_name = request.form.get('pet_name', '') # Get pet nickname
         price = request.form['price']
         cancellation_hours = request.form['cancellation_hours']
-        
+
         # Process availability
         selected_days = request.form.getlist('days')
         start_time = request.form['start_time']
         end_time = request.form['end_time']
         available_slots = f"{', '.join(selected_days)} {start_time} - {end_time}"
-        
+
         introduction = request.form['introduction']
         rules = request.form['rules']
         files = request.files.getlist('pet_images')
-        
+
         # If user didn't refresh, they might send 'pet_image' (singular)
         if not files:
              files = request.files.getlist('pet_image')
-        
+
         if files and files[0].filename != '':
             conn = get_db()
             cursor = conn.cursor()
-            
+
             saved_filenames = []
             cover_image = None
-            
+
             for i, file in enumerate(files):
                 if file.filename:
                      filename = save_upload(file, f"listing_{session['user_id']}_{pet_type}_{i}")
@@ -51,26 +51,26 @@ def trainer_create_listing():
 
                      if i == 0:
                          cover_image = filename
-            
+
             if saved_filenames:
                 cursor.execute('''
                     INSERT INTO listings (trainer_id, pet_image, pet_type, breed, pet_name, available_slots, price, introduction, rules, cancellation_hours)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (session['user_id'], cover_image, pet_type, breed, pet_name, available_slots, price, introduction, rules, cancellation_hours))
-                
+
                 listing_id = cursor.lastrowid
-                
+
                 # Insert all images into listing_images
                 for filename in saved_filenames:
                     cursor.execute('INSERT INTO listing_images (listing_id, filename) VALUES (?, ?)', (listing_id, filename))
-                
+
                 conn.commit()
                 flash('刊登成功！', 'success')
             else:
                  flash('請至少上傳一張圖片', 'error')
-                 
+
             return redirect(url_for('trainer.trainer_manage_listings'))
-            
+
     return render_template('trainer_create_listing.html', title='刊登', active_page='create_listing')
 
 @bp.route('/trainer/manage-listings')
@@ -78,15 +78,15 @@ def trainer_create_listing():
 def trainer_manage_listings():
     conn = get_db()
     listings = conn.execute('SELECT * FROM listings WHERE trainer_id = ? ORDER BY created_at DESC', (session['user_id'],)).fetchall()
-    
+
     published = [l for l in listings if l['status'] == 'approved']
     unpublished = [l for l in listings if l['status'] == 'closed']
     history_approved = [l for l in listings if l['status'] in ['approved', 'closed']]
     history_pending = [l for l in listings if l['status'] in ['pending', 'modification_pending']]
     history_rejected = [l for l in listings if l['status'] == 'rejected']
-    
-    return render_template('trainer_manage_listings.html', 
-                           title='管理刊登內容', 
+
+    return render_template('trainer_manage_listings.html',
+                           title='管理刊登內容',
                            active_page='manage_listings',
                            published=published,
                            unpublished=unpublished,
@@ -104,7 +104,7 @@ def trainer_close_listing(listing_id):
         conn.execute("UPDATE listings SET status = 'closed' WHERE id = ?", (listing_id,))
         conn.commit()
         flash('刊登已下架', 'success')
-    
+
     return redirect(url_for('trainer.trainer_manage_listings'))
 
 @bp.route('/trainer/listing/<int:listing_id>/republish', methods=['POST'])
@@ -117,7 +117,7 @@ def trainer_republish_listing(listing_id):
         conn.execute("UPDATE listings SET status = 'approved' WHERE id = ?", (listing_id,))
         conn.commit()
         flash('刊登已重新上架', 'success')
-    
+
     return redirect(url_for('trainer.trainer_manage_listings'))
 
 @bp.route('/trainer/listing/<int:listing_id>/cancel-modification', methods=['POST'])
@@ -126,7 +126,7 @@ def trainer_cancel_modification(listing_id):
     conn = get_db()
     # Verify ownership and status
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
-    
+
     if listing and listing['status'] == 'modification_pending':
         # Revert to 'closed' (unpublished) as requested
         # Note: This keeps the modified content but stops the review process.
@@ -135,7 +135,7 @@ def trainer_cancel_modification(listing_id):
         flash('修改申請已取消，刊登已移至「已下架」列表', 'success')
     else:
         flash('無法取消：找不到該申請或狀態不正確', 'error')
-    
+
     return redirect(url_for('trainer.trainer_manage_listings'))
 
 @bp.route('/trainer/listing/<int:listing_id>/delete', methods=['POST'])
@@ -144,7 +144,7 @@ def trainer_delete_listing(listing_id):
     conn = get_db()
     # Verify ownership
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
-    
+
     if listing and listing['status'] == 'closed':
         # Delete images first
         conn.execute('DELETE FROM listing_images WHERE listing_id = ?', (listing_id,))
@@ -154,7 +154,7 @@ def trainer_delete_listing(listing_id):
         flash('刊登已永久刪除', 'success')
     else:
         flash('無法刪除：刊登不存在或非下架狀態', 'error')
-    
+
     return redirect(url_for('trainer.trainer_manage_listings'))
 
 @bp.route('/trainer/listing/<int:listing_id>')
@@ -163,7 +163,7 @@ def trainer_listing_detail(listing_id):
     conn = get_db()
     # Verify ownership
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
-    
+
     if listing:
         # Fetch other images
         images = conn.execute('SELECT filename FROM listing_images WHERE listing_id = ? ORDER BY id ASC', (listing_id,)).fetchall()
@@ -174,7 +174,7 @@ def trainer_listing_detail(listing_id):
     if listing is None:
         flash('找不到該刊登', 'error')
         return redirect(url_for('trainer.trainer_manage_listings'))
-        
+
     return render_template('trainer_listing_detail.html', listing=listing, images=additional_images, active_page='manage_listings')
 
 @bp.route('/trainer/listing/<int:listing_id>/edit', methods=('GET', 'POST'))
@@ -182,7 +182,7 @@ def trainer_listing_detail(listing_id):
 def trainer_listing_edit(listing_id):
     conn = get_db()
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
-    
+
     if listing is None:
         flash('找不到該刊登', 'error')
         return redirect(url_for('trainer.trainer_manage_listings'))
@@ -214,8 +214,8 @@ def trainer_calendar():
     conn = get_db()
     # Fetch confirmed, in_progress, and completed orders
     orders_rows = conn.execute('''
-        SELECT o.*, 
-               u.name as buyer_name, 
+        SELECT o.*,
+               u.name as buyer_name,
                l.pet_name
         FROM orders o
         JOIN users u ON o.buyer_id = u.id
@@ -223,7 +223,7 @@ def trainer_calendar():
         WHERE o.seller_id = ? AND o.status IN ('confirmed', 'in_progress', 'completed')
         ORDER BY o.booking_date ASC, o.booking_time ASC
     ''', (session['user_id'],)).fetchall()
-    
+
     orders_list = []
     for row in orders_rows:
         o = dict(row)
@@ -236,13 +236,13 @@ def trainer_calendar():
             o['status_text'] = '已完成'
         else:
             o['status_text'] = o['status']
-            
+
         orders_list.append(o)
 
     today = date.today()
 
-    return render_template('trainer_calendar.html', 
-                           title='行事曆', 
+    return render_template('trainer_calendar.html',
+                           title='行事曆',
                            active_page='trainer_calendar',
                            orders_json=json.dumps(orders_list),
                            current_year=today.year,
@@ -264,9 +264,7 @@ def trainer_order_action(order_id, action):
         msg, category = order_service.trainer_action(order_id, session['user_id'], action, force)
         flash(msg, category)
     except order_service.ScheduleConflict as e:
-        # The page's JavaScript turns this flash into a "accept anyway?" dialog.
-        session['pending_accept_order_id'] = order_id
-        session['pending_accept_conflicts'] = e.conflict_info
+        # The page's JavaScript turns this flash into an "accept anyway?" dialog.
         flash(f'OVERLAP_WARNING::{order_id}::{e.conflict_info}', 'warning')
     except ServiceError as e:
         flash(e.message, e.category)
@@ -276,16 +274,16 @@ def trainer_order_action(order_id, action):
 @role_required(Role.TRAINER)
 def trainer_level_history():
     conn = get_db()
-    
+
     level_history = conn.execute('''
-        SELECT * FROM trainer_level_history 
-        WHERE trainer_id = ? 
+        SELECT * FROM trainer_level_history
+        WHERE trainer_id = ?
         ORDER BY created_at DESC
     ''', (session['user_id'],)).fetchall()
-    
-    
-    return render_template('trainer_level_history.html', 
-                          level_history=level_history, 
+
+
+    return render_template('trainer_level_history.html',
+                          level_history=level_history,
                           active_page='trainer_account')
 
 # Trainer Account Routes
@@ -340,7 +338,7 @@ def trainer_withdrawal():
 def trainer_reviews_history():
     filter_date = request.args.get('date')
     conn = get_db()
-    
+
     query = '''
         SELECT r.*, u.name as buyer_name, u.nickname as buyer_nickname, u.avatar as buyer_avatar
         FROM reviews r
@@ -348,27 +346,27 @@ def trainer_reviews_history():
         WHERE r.target_user_id = ? AND r.review_type = 'buyer_to_trainer'
     '''
     params = [session['user_id']]
-    
+
     if filter_date:
         query += ' AND date(r.created_at) = ?'
         params.append(filter_date)
-        
+
     query += ' ORDER BY r.created_at DESC'
-    
+
     reviews = conn.execute(query, params).fetchall()
-    
+
     # Calculate stats
     stats_row = conn.execute('''
-        SELECT AVG(rating) as avg_rating, COUNT(*) as total_reviews 
-        FROM reviews 
+        SELECT AVG(rating) as avg_rating, COUNT(*) as total_reviews
+        FROM reviews
         WHERE target_user_id = ? AND review_type = 'buyer_to_trainer'
     ''', (session['user_id'],)).fetchone()
-    
+
     avg_rating = stats_row['avg_rating'] if stats_row and stats_row['avg_rating'] else 0
     total_reviews = stats_row['total_reviews']
-    
-    
-    return render_template('trainer_reviews.html', 
+
+
+    return render_template('trainer_reviews.html',
                           reviews=[dict(r) for r in reviews],
                           avg_rating=avg_rating,
                           total_reviews=total_reviews,
@@ -380,11 +378,11 @@ def trainer_reviews_history():
 def trainer_blacklist():
     conn = get_db()
     blacklist = conn.execute('''
-        SELECT b.*, u.name, u.nickname, u.email, u.avatar 
+        SELECT b.*, u.name, u.nickname, u.email, u.avatar
         FROM blacklists b
         JOIN users u ON b.consumer_id = u.id
         WHERE b.trainer_id = ?
         ORDER BY b.created_at DESC
     ''', (session['user_id'],)).fetchall()
-    
+
     return render_template('trainer_blacklist.html', blacklist=blacklist, active_page='blacklist')

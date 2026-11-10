@@ -17,7 +17,7 @@ def delete_payment_method(method_id):
     conn = get_db()
     conn.execute('DELETE FROM saved_payment_methods WHERE id = ? AND user_id = ?', (method_id, session['user_id']))
     conn.commit()
-    
+
     return {'success': True}
 
 # Bank accounts: the old URLs stay, all backed by bank_account_service.
@@ -42,21 +42,15 @@ def add_user_bank_account():
                                             data['account_name'], is_default=data.get('is_default', False))
     return {'success': True}
 
-@bp.route('/api/user/bank-accounts/<int:account_id>', methods=['DELETE'])
-@login_required(json=True)
-def api_delete_user_bank_account(account_id):
-    bank_account_service.delete_account('member', account_id, session['user_id'])
-    return {'success': True}
-
 @bp.route('/api/blacklist/add', methods=['POST'])
 @role_required(Role.TRAINER, json=True, status=401)
 def add_to_blacklist():
     data = request.get_json()
     consumer_id = data.get('consumer_id')
-    
+
     if not consumer_id:
         return {'error': 'Missing consumer_id'}, 400
-        
+
     conn = get_db()
     try:
         conn.execute('INSERT INTO blacklists (trainer_id, consumer_id) VALUES (?, ?)', (session['user_id'], consumer_id))
@@ -67,7 +61,7 @@ def add_to_blacklist():
     except Exception as e:
         current_app.logger.exception('Error adding to blacklist')
         return {'error': str(e)}, 500
-    
+
     return {'success': success}
 
 @bp.route('/api/blacklist/remove', methods=['POST'])
@@ -75,10 +69,10 @@ def add_to_blacklist():
 def remove_from_blacklist():
     data = request.get_json()
     consumer_id = data.get('consumer_id')
-    
+
     if not consumer_id:
         return {'error': 'Missing consumer_id'}, 400
-        
+
     conn = get_db()
     conn.execute('DELETE FROM blacklists WHERE trainer_id = ? AND consumer_id = ?', (session['user_id'], consumer_id))
     conn.commit()

@@ -18,12 +18,12 @@ bp = Blueprint('admin', __name__)
 def admin_listing_review():
     conn = get_db()
     listings = conn.execute('''
-        SELECT l.*, u.name as trainer_name, u.email as trainer_email 
+        SELECT l.*, u.name as trainer_name, u.email as trainer_email
         FROM listings l
         JOIN users u ON l.trainer_id = u.id
         WHERE l.status = 'pending'
     ''').fetchall()
-    
+
     return render_template('admin_listing_review_list.html', listings=listings, active_page='listing_review', title='刊登申請審核')
 
 @bp.route('/admin/listing-modification-review')
@@ -31,12 +31,12 @@ def admin_listing_review():
 def admin_listing_modification_review():
     conn = get_db()
     listings = conn.execute('''
-        SELECT l.*, u.name as trainer_name, u.email as trainer_email 
+        SELECT l.*, u.name as trainer_name, u.email as trainer_email
         FROM listings l
         JOIN users u ON l.trainer_id = u.id
         WHERE l.status = 'modification_pending'
     ''').fetchall()
-    
+
     return render_template('admin_listing_review_list.html', listings=listings, active_page='listing_modification_review', title='刊登修改審核', is_modification=True)
 
 @bp.route('/admin/listing-review/<int:listing_id>')
@@ -49,7 +49,7 @@ def admin_listing_review_detail(listing_id):
         JOIN users u ON l.trainer_id = u.id
         WHERE l.id = ?
     ''', (listing_id,)).fetchone()
-    
+
     if listing:
         # Fetch other images
         images = conn.execute('SELECT filename FROM listing_images WHERE listing_id = ?', (listing_id,)).fetchall()
@@ -61,7 +61,7 @@ def admin_listing_review_detail(listing_id):
     if listing is None:
         flash('找不到該刊登', 'error')
         return redirect(url_for('admin.admin_listing_review'))
-        
+
     return render_template('admin_listing_review_detail.html', listing=listing, images=additional_images, active_page='listing_review')
 
 @bp.route('/admin/listing-review/<int:listing_id>/approve', methods=['POST'])
@@ -70,7 +70,7 @@ def admin_listing_approve(listing_id):
     conn = get_db()
     conn.execute("UPDATE listings SET status = 'approved' WHERE id = ?", (listing_id,))
     conn.commit()
-    
+
     flash('刊登已核准', 'success')
     return redirect(url_for('admin.admin_listing_review'))
 
@@ -80,7 +80,7 @@ def admin_listing_reject(listing_id):
     conn = get_db()
     conn.execute("UPDATE listings SET status = 'rejected' WHERE id = ?", (listing_id,))
     conn.commit()
-    
+
     flash('刊登已駁回', 'info')
     return redirect(url_for('admin.admin_listing_review'))
 
@@ -99,7 +99,7 @@ def admin_order_tracking():
         JOIN listings l ON o.listing_id = l.id
         ORDER BY o.created_at DESC
     ''').fetchall()
-    
+
     # Process orders for display
     orders_list = []
     for row in orders:
@@ -109,7 +109,7 @@ def admin_order_tracking():
             order['pet_type'] = '狗'
         elif order['pet_type'] == 'cat':
             order['pet_type'] = '貓'
-        
+
         # Translate status
         status_map = {
             OrderStatus.PENDING: '待接受',
@@ -120,7 +120,7 @@ def admin_order_tracking():
             OrderStatus.CANCELLED: '已取消'
         }
         order['status_text'] = status_map.get(order['status'], order['status'])
-        
+
         # Translate payment_status
         payment_map = {
             PaymentStatus.UNPAID: '未付款',
@@ -128,12 +128,12 @@ def admin_order_tracking():
             PaymentStatus.REFUNDED: '已退款'
         }
         order['payment_status_text'] = payment_map.get(order.get('payment_status', PaymentStatus.UNPAID), '未付款')
-        
+
         orders_list.append(order)
-    
-    
-    return render_template('admin_order_tracking.html', 
-                          title='查看訂單流程進度', 
+
+
+    return render_template('admin_order_tracking.html',
+                          title='查看訂單流程進度',
                           active_page='order_tracking',
                           orders=orders_list)
 
@@ -141,47 +141,47 @@ def admin_order_tracking():
 @role_required(Role.ADMIN)
 def admin_confirm_payment(order_id):
     conn = get_db()
-    
+
     # Check if order exists and payment is made
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
-    
+
     if not order:
         flash('訂單不存在', 'error')
         return redirect(url_for('admin.admin_order_tracking'))
-    
+
     order = dict(order)
-    
+
     if order.get('payment_status') != PaymentStatus.PAID:
         flash('此訂單尚未付款', 'error')
         return redirect(url_for('admin.admin_order_tracking'))
-    
+
     if order.get('payment_confirmed') == 1:
         flash('此訂單已確認收款', 'info')
         return redirect(url_for('admin.admin_order_tracking'))
-    
+
     # Update payment confirmation
     confirm_time = now_utc8().strftime('%Y-%m-%d %H:%M:%S')
     conn.execute('''
-        UPDATE orders 
+        UPDATE orders
         SET payment_confirmed = 1,
             updated_at = ?
         WHERE id = ?
     ''', (confirm_time, order_id))
     conn.commit()
-    
+
     # Calculate Unconfirmed Amount (Total Price - Already Recorded Income)
     # This ensures we handle supplements correctly and avoid double counting
 
     # Sum up all 'income' transactions for this order
     existing_income_row = conn.execute('''
-        SELECT SUM(amount) as total 
-        FROM platform_transactions 
+        SELECT SUM(amount) as total
+        FROM platform_transactions
         WHERE related_order_id = ? AND type IN ('income', 'refund')
     ''', (order_id,)).fetchone()
-    
+
     existing_income = existing_income_row['total'] if existing_income_row['total'] else 0
     amount_to_add = order['total_price'] - existing_income
-    
+
     if amount_to_add > 0:
         current_app.logger.info('Admin confirmed payment: adding %s for order %s', amount_to_add, order_id)
         update_platform_balance(
@@ -193,26 +193,21 @@ def admin_confirm_payment(order_id):
         msg = f'已確認收款！並已入帳 {amount_to_add} 元至平台帳戶'
     else:
         msg = '已確認收款！（金額已全數入帳，無新增款項）'
-    
+
     flash(msg, 'success')
     return redirect(url_for('admin.admin_order_tracking'))
-
-@bp.route('/admin/complaints')
-@role_required(Role.ADMIN)
-def admin_complaints():
-    return render_template('admin_generic.html', title='申訴查詢', active_page='complaints')
 
 @bp.route('/admin/trainer-review')
 @role_required(Role.ADMIN)
 def admin_trainer_review():
     conn = get_db()
     applications = conn.execute('''
-        SELECT ta.*, u.name, u.email 
-        FROM trainer_applications ta 
-        JOIN users u ON ta.user_id = u.id 
+        SELECT ta.*, u.name, u.email
+        FROM trainer_applications ta
+        JOIN users u ON ta.user_id = u.id
         WHERE ta.status = 'pending'
     ''').fetchall()
-    
+
     return render_template('admin_trainer_review_list.html', applications=applications, active_page='trainer_review')
 
 @bp.route('/admin/trainer-review/<int:app_id>')
@@ -221,15 +216,15 @@ def admin_trainer_review_detail(app_id):
     conn = get_db()
     application = conn.execute('''
         SELECT ta.*, u.name, u.email, u.nickname, u.gender, u.dob, u.city, u.district, u.phone
-        FROM trainer_applications ta 
-        JOIN users u ON ta.user_id = u.id 
+        FROM trainer_applications ta
+        JOIN users u ON ta.user_id = u.id
         WHERE ta.id = ?
     ''', (app_id,)).fetchone()
-    
+
     if application is None:
         flash('找不到該申請', 'error')
         return redirect(url_for('admin.admin_trainer_review'))
-        
+
     return render_template('admin_trainer_review_detail.html', app=application, active_page='trainer_review')
 
 @bp.route('/admin/trainer-review/<int:app_id>/approve', methods=['POST'])
@@ -238,7 +233,7 @@ def admin_approve_application(app_id):
     conn = get_db()
     # Get application to find user_id
     app_row = conn.execute('SELECT user_id FROM trainer_applications WHERE id = ?', (app_id,)).fetchone()
-    
+
     if app_row:
         user_id = app_row['user_id']
         # Update application status
@@ -249,7 +244,7 @@ def admin_approve_application(app_id):
         flash('已核准申請，該會員已升級為訓練師', 'success')
     else:
         flash('找不到該申請', 'error')
-        
+
     return redirect(url_for('admin.admin_trainer_review'))
 
 @bp.route('/admin/trainer-review/<int:app_id>/reject', methods=['POST'])
@@ -258,7 +253,7 @@ def admin_reject_application(app_id):
     conn = get_db()
     conn.execute("UPDATE trainer_applications SET status = 'rejected' WHERE id = ?", (app_id,))
     conn.commit()
-    
+
     flash('已駁回申請', 'info')
     return redirect(url_for('admin.admin_trainer_review'))
 
@@ -290,33 +285,33 @@ def admin_process_refund(task_id):
 def admin_member_management():
     query = request.args.get('q', '').strip()
     role_filter = request.args.get('role', 'all')
-    
+
     conn = get_db()
-    
+
     sql = 'SELECT * FROM users WHERE 1=1'
     params = []
-    
+
     if query:
         sql += ' AND (name LIKE ? OR nickname LIKE ? OR email LIKE ?)'
         search = f"%{query}%"
         params.extend([search, search, search])
-        
+
     if role_filter and role_filter != 'all':
         sql += ' AND role = ?'
         params.append(role_filter)
-        
+
     sql += ' ORDER BY created_at DESC'
-    
+
     users = conn.execute(sql, params).fetchall()
-    
-    
-    return render_template('admin_member_list.html', 
-                           users=users, 
-                           search_query=query, 
+
+
+    return render_template('admin_member_list.html',
+                           users=users,
+                           search_query=query,
                            current_role=role_filter,
                            active_page='member_management')
 
-    
+
 @bp.route('/admin/statistics')
 @role_required(Role.ADMIN)
 def admin_statistics_dashboard():
@@ -332,13 +327,13 @@ def admin_member_detail(user_id):
     if user is None:
         flash('找不到該會員', 'error')
         return redirect(url_for('admin.admin_member_management'))
-    
+
     # Fetch level history if user is a trainer
     level_history = []
     if user['role'] == Role.TRAINER:
         level_history = conn.execute('''
-            SELECT * FROM trainer_level_history 
-            WHERE trainer_id = ? 
+            SELECT * FROM trainer_level_history
+            WHERE trainer_id = ?
             ORDER BY created_at DESC
         ''', (user_id,)).fetchall()
 
@@ -358,10 +353,10 @@ def admin_member_edit(user_id):
         city = request.form['city']
         district = request.form['district']
         role = request.form['role']
-        
+
         try:
             conn.execute('''
-                UPDATE users 
+                UPDATE users
                 SET email = ?, name = ?, nickname = ?, gender = ?, dob = ?, phone = ?, city = ?, district = ?, role = ?
                 WHERE id = ?
             ''', (email, name, nickname, gender, dob, phone, city, district, role, user_id))
@@ -375,10 +370,10 @@ def admin_member_edit(user_id):
 
     # GET request
     user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-    
+
     if user is None:
         return redirect(url_for('admin.admin_member_management'))
-        
+
     return render_template('admin_member_edit.html', user=user, active_page='member_management')
 
 @bp.route('/admin/member-management/<int:user_id>/delete', methods=['POST'])
@@ -407,7 +402,7 @@ def admin_appeals():
         JOIN users u ON a.user_id = u.id
         ORDER BY a.created_at DESC
     ''').fetchall()
-    
+
     return render_template('admin_appeals_list.html', appeals=appeals, active_page='appeals', title='申訴案件管理')
 
 @bp.route('/admin/appeal/<int:appeal_id>', methods=('GET', 'POST'))
@@ -434,7 +429,7 @@ def admin_appeal_detail(appeal_id):
 @role_required(Role.ADMIN)
 def admin_fee_settings():
     conn = get_db()
-    
+
     if request.method == 'POST':
         try:
             commission_general = float(request.form.get('commission_general', 15.0))
@@ -442,26 +437,26 @@ def admin_fee_settings():
             commission_professional = float(request.form.get('commission_professional', 5.0))
             level_adv_threshold = float(request.form.get('level_adv_threshold', 4.0))
             level_pro_threshold = float(request.form.get('level_pro_threshold', 4.5))
-            
+
             # Legacy field update just in case
-            commission_rate = commission_general 
-            
+            commission_rate = commission_general
+
             conn.execute(f'''
-                UPDATE platform_settings 
-                SET commission_rate = ?, 
+                UPDATE platform_settings
+                SET commission_rate = ?,
                     commission_general = ?, commission_advanced = ?, commission_professional = ?,
                     level_adv_threshold = ?, level_pro_threshold = ?,
                     updated_at = {NOW_SQL}
                 WHERE id = 1
-            ''', (commission_rate, commission_general, commission_advanced, commission_professional, 
+            ''', (commission_rate, commission_general, commission_advanced, commission_professional,
                   level_adv_threshold, level_pro_threshold))
             conn.commit()
             flash('平台設定已更新', 'success')
         except ValueError:
             flash('請輸入有效的數值', 'error')
-    
+
     settings = conn.execute('SELECT * FROM platform_settings LIMIT 1').fetchone()
-    
+
     return render_template('admin_platform_settings.html',
                           title='平台相關設定',
                           active_page='fee_settings',
@@ -472,7 +467,7 @@ def admin_fee_settings():
 @role_required(Role.ADMIN)
 def admin_withdrawal_requests():
     conn = get_db()
-    
+
     # Get all withdrawal requests with user info
     requests = conn.execute('''
         SELECT w.*, u.name as trainer_name, u.nickname as trainer_nickname,
@@ -482,14 +477,14 @@ def admin_withdrawal_requests():
         LEFT JOIN trainer_accounts t ON w.user_id = t.user_id
         ORDER BY w.created_at DESC
     ''').fetchall()
-    
-    
+
+
     pending_requests = [dict(r) for r in requests if r['status'] == 'pending']
     history_requests = [dict(r) for r in requests if r['status'] != 'pending']
-    
+
     # Get platform account balance
     platform_account = get_platform_account()
-    
+
     return render_template('admin_withdrawal_requests.html',
                           title='餘額提領申請',
                           active_page='withdrawal_requests',
@@ -501,83 +496,82 @@ def admin_withdrawal_requests():
 @role_required(Role.ADMIN)
 def admin_approve_withdrawal(request_id):
     conn = get_db()
-    
+
     # Get withdrawal request
-    withdrawal = conn.execute('SELECT * FROM withdrawal_requests WHERE id = ?', 
+    withdrawal = conn.execute('SELECT * FROM withdrawal_requests WHERE id = ?',
                              (request_id,)).fetchone()
-    
+
     if not withdrawal:
         flash('找不到該提領申請', 'error')
         return redirect(url_for('admin.admin_withdrawal_requests'))
-    
+
     if withdrawal['status'] != 'pending':
         flash('此申請已處理過', 'error')
         return redirect(url_for('admin.admin_withdrawal_requests'))
-    
+
     # Get trainer account
     account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?',
                           (withdrawal['user_id'],)).fetchone()
-    
+
     if not account or account['balance'] < withdrawal['amount']:
         flash('訓練師餘額不足，無法核准提領', 'error')
         return redirect(url_for('admin.admin_withdrawal_requests'))
-    
+
     try:
         # Update account balance
         new_balance = account['balance'] - withdrawal['amount']
         conn.execute(f'''
-            UPDATE trainer_accounts 
+            UPDATE trainer_accounts
             SET balance = ?, updated_at = {NOW_SQL}
             WHERE user_id = ?
         ''', (new_balance, withdrawal['user_id']))
 
         # Record transaction
         conn.execute(f'''
-            INSERT INTO account_transactions 
+            INSERT INTO account_transactions
             (user_id, amount, type, description, created_at)
             VALUES (?, ?, 'withdrawal', ?, {NOW_SQL})
-        ''', (withdrawal['user_id'], -withdrawal['amount'], 
+        ''', (withdrawal['user_id'], -withdrawal['amount'],
               f'提領申請 #{request_id} 已核准'))
-        
+
         # Update withdrawal request status
         conn.execute(f'''
             UPDATE withdrawal_requests
-            SET status = 'approved', 
+            SET status = 'approved',
                 processed_at = {NOW_SQL},
                 processed_by = ?
             WHERE id = ?
         ''', (session['user_id'], request_id))
-        
+
         conn.commit()
-        
-        # Note: Platform balance is NOT deducted here because it was deducted when order was completed (Liability recognition)
-        # We just record the withdrawal status change.
-        
-        flash(f'已核准提領申請', 'success')
+
+        # The platform balance is not touched: the trainer's share was already booked
+        # as a liability when the order was completed.
+        flash('已核准提領申請', 'success')
     except Exception as e:
         conn.rollback()
         flash(f'處理失敗: {str(e)}', 'error')
-    
+
     return redirect(url_for('admin.admin_withdrawal_requests'))
 
 @bp.route('/admin/withdrawal/<int:request_id>/reject', methods=['POST'])
 @role_required(Role.ADMIN)
 def admin_reject_withdrawal(request_id):
     conn = get_db()
-    
+
     withdrawal = conn.execute('SELECT * FROM withdrawal_requests WHERE id = ?',
                              (request_id,)).fetchone()
-    
+
     if not withdrawal:
         flash('找不到該提領申請', 'error')
         return redirect(url_for('admin.admin_withdrawal_requests'))
-    
+
     if withdrawal['status'] != 'pending':
         flash('此申請已處理過', 'error')
         return redirect(url_for('admin.admin_withdrawal_requests'))
-    
+
     admin_note = request.form.get('admin_note', '')
-    
+
     conn.execute(f'''
         UPDATE withdrawal_requests
         SET status = 'rejected',
@@ -586,8 +580,8 @@ def admin_reject_withdrawal(request_id):
             processed_by = ?
         WHERE id = ?
     ''', (admin_note, session['user_id'], request_id))
-    
+
     conn.commit()
-    
+
     flash('已拒絕提領申請', 'info')
     return redirect(url_for('admin.admin_withdrawal_requests'))

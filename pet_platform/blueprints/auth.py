@@ -34,7 +34,7 @@ def register():
             return redirect(url_for('auth.register'))
 
         password_hash = generate_password_hash(password)
-        
+
         try:
             conn.execute(f'INSERT INTO users (email, password_hash, name, nickname, gender, dob, city, district, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, {NOW_SQL})',
                          (email, password_hash, name, nickname, gender, dob, city, district, phone))
