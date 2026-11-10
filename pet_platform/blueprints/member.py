@@ -1,13 +1,10 @@
 """Member (consumer) pages under /member/."""
-import time
-import uuid
-from datetime import date, datetime
-
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from pet_platform.constants import OrderStatus, PaymentStatus
 from pet_platform.db import get_db
 from pet_platform.decorators import login_required
+from pet_platform.services import order_service, payment_service, ServiceError
 from pet_platform.utils.time import NOW_SQL
 from pet_platform.utils.uploads import file_extension, save_upload
 
@@ -93,144 +90,12 @@ def member_profile():
 @bp.route('/member/orders')
 @login_required
 def member_orders():
-    # Get filters
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-        
-    conn = get_db()
-    orders_rows = conn.execute('''
-        SELECT o.*, 
-               u.name as trainer_name, u.nickname as trainer_nickname, u.avatar as trainer_avatar,
-               l.pet_name, l.pet_type, l.pet_image
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        WHERE o.buyer_id = ?
-        ORDER BY o.booking_date DESC, o.booking_time DESC
-    ''', (session['user_id'],)).fetchall()
-
-    today = date.today().strftime('%Y-%m-%d')
-
-    # Base query wrapper function for filters
-    def apply_date_filter(query, base_params):
-        if start_date:
-            query += " AND o.booking_date >= ?"
-            base_params.append(start_date)
-        if end_date:
-            query += " AND o.booking_date <= ?"
-            base_params.append(end_date)
-        return query, tuple(base_params)
-
-    # Exclude 'inquiry' status from all lists
-    upcoming_orders_query = '''
-        SELECT o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname,
-               a.status as appeal_status, a.id as appeal_id
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        LEFT JOIN order_appeals a ON o.id = a.order_id
-        WHERE o.buyer_id = ? 
-        AND ((o.status = "confirmed" AND o.booking_date >= ?) OR o.status = "in_progress")
-        AND o.status != 'inquiry'
-    '''
-    upcoming_params = [session['user_id'], today]
-    upcoming_orders_query, upcoming_params = apply_date_filter(upcoming_orders_query, upcoming_params)
-    upcoming_orders_query += " ORDER BY o.booking_date, o.booking_time"
-    upcoming_orders_rows = conn.execute(upcoming_orders_query, upcoming_params).fetchall()
-
-    history_orders_query = '''
-        SELECT o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname,
-               a.status as appeal_status, a.id as appeal_id
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        LEFT JOIN order_appeals a ON o.id = a.order_id
-        WHERE o.buyer_id = ? 
-        AND ((o.status != "confirmed" AND o.status != 'pending' AND o.status != 'in_progress') OR (o.status = "confirmed" AND o.booking_date < ?))
-        AND o.status != 'inquiry'
-    '''
-    history_params = [session['user_id'], today]
-    history_orders_query, history_params = apply_date_filter(history_orders_query, history_params)
-    history_orders_query += " ORDER BY o.booking_date DESC, o.booking_time DESC"
-    history_orders_rows = conn.execute(history_orders_query, history_params).fetchall()
-    
-    # Pending orders (status = 'pending')
-    pending_orders_query = '''
-        SELECT o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        WHERE o.buyer_id = ? AND o.status = "pending"
-    '''
-    pending_params = [session['user_id']]
-    pending_orders_query, pending_params = apply_date_filter(pending_orders_query, pending_params)
-    pending_orders_query += " ORDER BY o.booking_date, o.booking_time"
-    pending_orders_rows = conn.execute(pending_orders_query, pending_params).fetchall()
-    
-    # Process orders (add has_reviewed, time_range, pet_type translation, total_price)
-    def process_order_list(order_list_rows):
-        processed_list = []
-        for row in order_list_rows:
-            o = dict(row)
-            # Check if already reviewed by current user (buyer)
-            has_reviewed = conn.execute('SELECT 1 FROM reviews WHERE order_id = ? AND source_user_id = ?', (o['id'], session['user_id'])).fetchone()
-            o['has_reviewed'] = True if has_reviewed else False
-            
-            # Translate pet_type
-            if o.get('pet_type') == 'dog':
-                o['pet_type'] = '狗'
-            elif o.get('pet_type') == 'cat':
-                o['pet_type'] = '貓'
-            
-            # Calculate Time Range
-            start_h = int(o['booking_time'].split(':')[0])
-            duration = o['duration'] if o['duration'] else 1
-            end_h = start_h + duration
-            o['time_range'] = f"{start_h:02d}:00 - {end_h:02d}:00"
-            
-            # Ensure total_price
-            if not o['total_price']:
-                 o['total_price'] = (o['price_at_booking'] or 0) * duration
-            
-            # Check latest reschedule request status
-            resch_req = conn.execute('SELECT status FROM reschedule_requests WHERE order_id = ? ORDER BY created_at DESC LIMIT 1', (o['id'],)).fetchone()
-            o['reschedule_status'] = resch_req['status'] if resch_req else None
-            
-            # Count successful reschedules
-            resch_count = conn.execute("SELECT COUNT(*) FROM reschedule_requests WHERE order_id = ? AND status = 'approved'", (o['id'],)).fetchone()[0]
-            o['reschedule_count'] = resch_count
-            
-            # Latest refund task (pending or processed), if any
-            refund_task = conn.execute('SELECT amount, status FROM refund_tasks WHERE order_id = ? ORDER BY created_at DESC LIMIT 1', (o['id'],)).fetchone()
-            o['refund_amount'] = refund_task['amount'] if refund_task else 0
-            o['refund_status'] = refund_task['status'] if refund_task else None
-
-            # Ensure original_price
-            if o.get('original_price') is None:
-                o['original_price'] = o['total_price']
-
-            processed_list.append(o)
-        return processed_list
-
-    pending_orders = process_order_list(pending_orders_rows)
-    upcoming_orders = process_order_list(upcoming_orders_rows)
-    history_orders = process_order_list(history_orders_rows)
-
-    # Calculate monthly cancellation count for display
-    now = datetime.now()
-    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    monthly_cancel_count = conn.execute('''
-        SELECT COUNT(*) FROM orders 
-        WHERE buyer_id = ? AND status = 'cancelled' AND updated_at >= ?
-    ''', (session['user_id'], start_of_month)).fetchone()[0]
-    
-    return render_template('member_orders.html', 
+    user_id = session['user_id']
+    lists = order_service.list_member_orders(user_id, request.args.get('start_date'), request.args.get('end_date'))
+    return render_template('member_orders.html',
                            active_page='orders',
-                           pending_orders=pending_orders,
-                           upcoming_orders=upcoming_orders,
-                           history_orders=history_orders,
-                           monthly_cancel_count=monthly_cancel_count)
+                           monthly_cancel_count=order_service.monthly_cancel_count(user_id),
+                           **lists)
 
 @bp.route('/member/order/<int:order_id>/appeal', methods=('GET', 'POST'))
 @login_required
@@ -369,116 +234,18 @@ def member_payment(order_id):
 @bp.route('/member/order/<int:order_id>/payment', methods=['POST'])
 @login_required
 def process_payment(order_id):
-    conn = get_db()
-    order = conn.execute('SELECT * FROM orders WHERE id = ? AND buyer_id = ?', 
-                        (order_id, session['user_id'])).fetchone()
-    
-    if not order:
-        flash('訂單不存在', 'error')
+    try:
+        payment_service.pay_order(order_id, session['user_id'], request.form)
+    except payment_service.PaymentFormError as e:
+        flash(e.message, e.category)
+        return redirect(url_for('member.member_payment', order_id=order_id))
+    except ServiceError as e:
+        flash(e.message, e.category)
         return redirect(url_for('member.member_orders'))
-        
-    order = dict(order)
-    
-    if order['status'] != OrderStatus.CONFIRMED:
-        flash('此訂單無法付款（狀態不正確）', 'error')
-        return redirect(url_for('member.member_orders'))
-    
-    if order.get('payment_status') == PaymentStatus.PAID:
-        flash('此訂單已付款', 'info')
-        return redirect(url_for('member.member_orders'))
-    
-    # Check if using saved method
-    saved_method_id = request.form.get('saved_method_id')
-    save_card = request.form.get('save_card')
-    
-    payment_success = False
-    card_last4 = ''
-    
-    if saved_method_id:
-        # Using saved method
-        method = conn.execute('SELECT * FROM saved_payment_methods WHERE id = ? AND user_id = ?', 
-                             (saved_method_id, session['user_id'])).fetchone()
-        if not method:
-            flash('無效的付款方式', 'error')
-            return redirect(url_for('member.member_payment', order_id=order_id))
-        
-        # Simulate processing with token
-        payment_success = True
-        card_last4 = method['card_number_masked'][-4:]
-        
-    else:
-        # Using new card
-        card_number = request.form.get('card_number', '').replace(' ', '')
-        expiry_month = request.form.get('expiry_month')
-        expiry_year = request.form.get('expiry_year')
-        cvv = request.form.get('cvv')
-        cardholder_name = request.form.get('cardholder_name')
-        
-        # Basic validation
-        if not all([card_number, expiry_month, expiry_year, cvv, cardholder_name]):
-            flash('請填寫完整的付款資訊', 'error')
-            return redirect(url_for('member.member_payment', order_id=order_id))
-        
-        if len(card_number) < 13 or len(card_number) > 16:
-            flash('信用卡號碼格式不正確', 'error')
-            return redirect(url_for('member.member_payment', order_id=order_id))
+    flash('付款成功！等待管理員確認。', 'success')
+    return redirect(url_for('member.member_orders'))
 
-        # Simulate Payment
-        payment_success = True
-        card_last4 = card_number[-4:]
-        
-        # Save card if requested
-        if save_card and payment_success:
-            try:
-                masked_card = f"**** **** **** {card_last4}"
-                expiry = f"{expiry_month}/{expiry_year}"
-                token = str(uuid.uuid4())
 
-                conn.execute(f'''
-                    INSERT INTO saved_payment_methods (user_id, card_number_masked, card_expiry, cardholder_name, payment_token, created_at)
-                    VALUES (?, ?, ?, ?, ?, {NOW_SQL})
-                ''', (session['user_id'], masked_card, expiry, cardholder_name, token))
-            except Exception:
-                current_app.logger.exception('Failed to save card')
-
-    if payment_success:
-        time.sleep(1) # Simulate delay
-
-        payment_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        # Calculate amount paid (difference if supplement)
-        current_paid = order.get('paid_amount') or 0
-        payment_amount = order['total_price'] - current_paid
-        
-        # Update order status
-        conn.execute(f'''
-            UPDATE orders 
-            SET payment_status = 'paid',
-                payment_method = 'credit_card',
-                payment_time = ?,
-                card_last4 = ?,
-                payment_confirmed = 0,
-                paid_amount = total_price,
-                updated_at = {NOW_SQL}
-            WHERE id = ?
-        ''', (payment_time, card_last4, order_id))
-        
-        # Record transaction (User Ledger - Payment Out)
-        conn.execute(f'''
-            INSERT INTO account_transactions (user_id, amount, transaction_type, status, description, created_at)
-            VALUES (?, ?, 'payment', 'completed', ?, {NOW_SQL})
-        ''', (session['user_id'], -payment_amount, f"支付訂單 #{order_id}"))
-        
-        conn.commit()
-        # The platform balance is credited later, when an admin confirms the payment.
-
-        flash('付款成功！等待管理員確認。', 'success')
-        return redirect(url_for('member.member_orders'))
-    
-    flash('付款失敗，請重試', 'error')
-    return redirect(url_for('member.member_payment', order_id=order_id))
-
-        
 @bp.route('/member/apply-trainer', methods=('GET', 'POST'))
 @login_required
 def member_apply_trainer():

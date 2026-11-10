@@ -5,6 +5,7 @@ from flask import current_app, request, session
 
 from pet_platform.db import get_db
 from pet_platform.decorators import login_required
+from pet_platform.services import chat_service
 from pet_platform.utils.time import NOW_SQL
 
 from pet_platform.blueprints.api import bp
@@ -168,75 +169,9 @@ def get_global_unread_count():
 @bp.route('/api/chat/contacts')
 @login_required(json=True)
 def get_chat_contacts():
-    user_id = session['user_id']
-    conn = get_db()
-    
-    # Use CTE to find the distinct contacts and aggregate their stats across ALL shared orders
-    query = '''
-        WITH Contacts AS (
-            SELECT DISTINCT 
-                CASE WHEN buyer_id = ? THEN seller_id ELSE buyer_id END as contact_id
-            FROM orders
-            WHERE buyer_id = ? OR seller_id = ?
-        ),
-        ContactStats AS (
-            SELECT 
-                c.contact_id,
-                -- Get the latest message content across all shared orders
-                (
-                    SELECT message 
-                    FROM order_messages m 
-                    JOIN orders o ON m.order_id = o.id 
-                    WHERE (o.buyer_id = ? AND o.seller_id = c.contact_id) 
-                       OR (o.buyer_id = c.contact_id AND o.seller_id = ?)
-                    ORDER BY m.created_at DESC LIMIT 1
-                ) as last_content,
-                -- Get the latest message time across all shared orders
-                (
-                    SELECT MAX(m.created_at) 
-                    FROM order_messages m 
-                    JOIN orders o ON m.order_id = o.id 
-                    WHERE (o.buyer_id = ? AND o.seller_id = c.contact_id) 
-                       OR (o.buyer_id = c.contact_id AND o.seller_id = ?)
-                ) as msg_time,
-                -- Sum unread counts across all shared orders
-                (
-                    SELECT COUNT(*) 
-                    FROM order_messages m 
-                    JOIN orders o ON m.order_id = o.id 
-                    WHERE m.sender_id = c.contact_id 
-                      AND m.is_read = 0
-                      AND ((o.buyer_id = ? AND o.seller_id = c.contact_id) OR (o.buyer_id = c.contact_id AND o.seller_id = ?))
-                ) as unread_count,
-                 -- Get the latest order ID (for clicking)
-                (
-                    SELECT id 
-                    FROM orders o
-                    WHERE ((o.buyer_id = ? AND o.seller_id = c.contact_id) OR (o.buyer_id = c.contact_id AND o.seller_id = ?))
-                    ORDER BY created_at DESC LIMIT 1
-                ) as last_order_id
-            FROM Contacts c
-        )
-        SELECT 
-            u.id as user_id,
-            CASE WHEN u.nickname IS NOT NULL AND u.nickname != '' THEN u.nickname ELSE u.name END as name,
-            cs.last_order_id,
-            cs.last_content as last_message,
-            cs.msg_time as last_message_time,
-            cs.unread_count
-        FROM ContactStats cs
-        JOIN users u ON cs.contact_id = u.id
-        ORDER BY cs.msg_time DESC
-    '''
-    
-    # 11 params total: 3 for Contacts, 2 for content, 2 for time, 2 for unread, 2 for order_id
-    params = (user_id,) * 11
-    
     try:
-        contacts_rows = conn.execute(query, params).fetchall()
-        contacts = [dict(row) for row in contacts_rows]
+        contacts = chat_service.list_contacts(session['user_id'])
     except Exception:
         current_app.logger.exception('Error fetching contacts')
         contacts = []
-    
     return {'contacts': contacts}

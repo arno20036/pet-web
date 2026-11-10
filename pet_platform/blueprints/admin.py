@@ -1,12 +1,12 @@
 """Admin pages under /admin/."""
 import sqlite3
-from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
 from pet_platform.constants import OrderStatus, PaymentStatus, Role
 from pet_platform.db import get_db
 from pet_platform.decorators import role_required
+from pet_platform.services import appeal_service, payment_service, stats_service
 from pet_platform.services.ledger_service import get_platform_account, update_platform_balance
 from pet_platform.utils.time import NOW_SQL, now_utc8
 
@@ -267,165 +267,22 @@ def admin_reject_application(app_id):
 @role_required(Role.ADMIN)
 def admin_refunds():
     trip_date = request.args.get('trip_date')
-    status = request.args.get('status', 'supplement')  # Default to 'supplement'
-    
-    conn = get_db()
-    
-    tasks = []
-    
-    if status == 'supplement':
-        # Logic for Supplement (Underpaid orders)
-        query = '''
-            SELECT o.*, o.id as order_id, 
-                   u.name as user_name, -- Buyer
-                   s.name as processor_name, -- Seller (as context) or null
-                   o.booking_date
-            FROM orders o
-            JOIN users u ON o.buyer_id = u.id
-            JOIN users s ON o.seller_id = s.id
-            JOIN listings l ON o.listing_id = l.id
-            WHERE (
-                (o.paid_amount IS NOT NULL AND o.paid_amount > 0 AND o.paid_amount < o.total_price) -- Underpaid (Need Supplement)
-                OR 
-                (
-                    o.payment_confirmed = 0 
-                    AND o.payment_status = 'paid' 
-                    AND (
-                        SELECT COUNT(*) 
-                        FROM account_transactions 
-                        WHERE user_id = o.buyer_id 
-                        AND description = '支付訂單 #' || o.id 
-                        AND transaction_type = 'payment'
-                    ) > 1
-                ) -- Paid Supplement (More than 1 payment txn)
-            )
-            AND o.status NOT IN ('cancelled', 'rejected')
-        '''
-        params = []
-        if trip_date:
-            query += ' AND o.booking_date = ?'
-            params.append(trip_date)
-            
-        query += ' ORDER BY o.booking_date ASC'
-        
-        rows = conn.execute(query, params).fetchall()
-        for row in rows:
-            item = dict(row)
-            item['type'] = 'supplement'
-            item['diff_amount'] = item['total_price'] - (item['paid_amount'] or 0)
-            tasks.append(item)
-            
-    elif status == 'supplement_completed':
-        # Logic for Completed Supplements (Paid & Confirmed)
-        query = '''
-            SELECT o.*, o.id as order_id, 
-                   u.name as user_name,
-                   s.name as processor_name, -- Seller context
-                   o.booking_date
-            FROM orders o
-            JOIN users u ON o.buyer_id = u.id
-            JOIN users s ON o.seller_id = s.id
-            WHERE o.status NOT IN ('cancelled', 'rejected')
-            AND o.paid_amount IS NOT NULL 
-            AND o.paid_amount >= o.total_price
-            AND o.payment_confirmed = 1
-            AND (
-                SELECT COUNT(*) 
-                FROM account_transactions 
-                WHERE user_id = o.buyer_id 
-                AND description = '支付訂單 #' || o.id 
-                AND transaction_type = 'payment'
-            ) > 1
-        '''
-        params = []
-        if trip_date:
-            query += ' AND o.booking_date = ?'
-            params.append(trip_date)
-            
-        query += ' ORDER BY o.updated_at DESC'
-        
-        rows = conn.execute(query, params).fetchall()
-        for row in rows:
-            item = dict(row)
-            item['type'] = 'supplement_completed'
-            item['diff_amount'] = 0 # Fully paid
-            tasks.append(item)
-            
-    else:
-        # Existing Logic for Refunds
-        query = '''
-            SELECT t.*, u.name as user_name, p.name as processor_name, o.booking_date
-            FROM refund_tasks t
-            JOIN users u ON t.user_id = u.id
-            JOIN orders o ON t.order_id = o.id
-            LEFT JOIN users p ON t.processed_by = p.id
-            WHERE t.status = ?
-        '''
-        params = [status]
-        
-        if trip_date:
-            query += ' AND o.booking_date = ?'
-            params.append(trip_date)
-            
-        query += ' ORDER BY t.created_at DESC'
-        
-        tasks_rows = conn.execute(query, params).fetchall()
-        
-        for row in tasks_rows:
-            task = dict(row)
-            task['type'] = 'refund'
-            # Fetch user's latest bank account
-            account = conn.execute('SELECT * FROM user_bank_accounts WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', (task['user_id'],)).fetchone()
-            if account:
-                task['bank_code'] = account['bank_code']
-                task['account_number'] = account['account_number']
-                task['account_name'] = account['account_name']
-                task['branch_code'] = account['branch_code']  # Fetch branch code too
-            
-            tasks.append(task)
-        
-    
+    status = request.args.get('status', 'supplement')
+    tasks = payment_service.list_finance_tasks(status, trip_date)
     return render_template('admin_refunds.html', tasks=tasks, active_page='refunds', trip_date=trip_date, status=status)
 
 @bp.route('/admin/refunds/<int:task_id>/process', methods=['POST'])
 @role_required(Role.ADMIN)
 def admin_process_refund(task_id):
-    conn = get_db()
-    
-    # Fetch task details for balance update
-    task = conn.execute('SELECT * FROM refund_tasks WHERE id = ?', (task_id,)).fetchone()
+    task = payment_service.get_refund_task(task_id)
     if not task:
         flash('找不到該退款任務', 'error')
         return redirect(url_for('admin.admin_refunds'))
-        
     try:
-        # Mark task as processed
-        conn.execute(f'''
-            UPDATE refund_tasks 
-            SET status = 'processed', processed_by = ?, processed_at = {NOW_SQL}
-            WHERE id = ?
-        ''', (session['user_id'], task_id))
-        
-        # Mark order as refunded (Sync status) AND Reduce paid_amount
-        # This is crucial for correct supplement calculation later: paid_amount should reflect NET payment.
-        conn.execute(f'''
-            UPDATE orders 
-            SET payment_status = 'refunded', 
-                paid_amount = MAX(0, IFNULL(paid_amount, 0) - ?),
-                updated_at = {NOW_SQL} 
-            WHERE id = ?
-        ''', (task['amount'], task['order_id']))
-        
-        conn.commit()
-        
-        # Update Platform Balance (Refund Expense)
-        current_app.logger.info('Admin refund (UI): %s for order %s', -task['amount'], task['order_id'])
-        update_platform_balance(-task['amount'], 'refund', f'訂單 #{task["order_id"]} 退款', order_id=task['order_id'])
-
+        payment_service.process_refund_task(task, session['user_id'], source='UI')
         flash('退款任務已標記為完成，並已從平台餘額扣除款項', 'success')
     except Exception as e:
         flash(f'處理失敗: {str(e)}', 'error')
-        
     return redirect(url_for('admin.admin_refunds'))
 
 @bp.route('/admin/member-management')
@@ -463,196 +320,8 @@ def admin_member_management():
 @bp.route('/admin/statistics')
 @role_required(Role.ADMIN)
 def admin_statistics_dashboard():
-    conn = get_db()
-    
-    # Date Filter
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    
-    # Default to past 30 days if not specified
-    if not start_date:
-        start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    if not end_date:
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        
-    # Append time for query
-    query_start = f"{start_date} 00:00:00"
-    query_end = f"{end_date} 23:59:59"
-    
-    # 1. Total Transaction Amount
-    total_transaction_row = conn.execute('''
-        SELECT SUM(total_price) as total 
-        FROM orders 
-        WHERE status = 'completed' AND created_at BETWEEN ? AND ?
-    ''', (query_start, query_end)).fetchone()
-    total_transaction_amount = total_transaction_row['total'] if total_transaction_row['total'] else 0
-    
-    # 2. Platform Net Revenue
-    net_revenue_row = conn.execute('''
-        SELECT SUM(amount) as net_revenue 
-        FROM platform_transactions 
-        WHERE created_at BETWEEN ? AND ?
-    ''', (query_start, query_end)).fetchone()
-    platform_net_revenue = net_revenue_row['net_revenue'] if net_revenue_row['net_revenue'] else 0
-    
-    # 3. Order Completion Rate & 4. Appeal Rate prep
-    order_stats = conn.execute('''
-        SELECT 
-            COUNT(*) as total,
-            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-            SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
-        FROM orders
-        WHERE created_at BETWEEN ? AND ? AND status != 'inquiry'
-    ''', (query_start, query_end)).fetchone()
-    
-    total_orders = order_stats['total']
-    completed_orders = order_stats['completed'] if order_stats['completed'] else 0
-    
-    completion_rate = round((completed_orders / total_orders * 100), 1) if total_orders > 0 else 0
-    
-    # 4. Appeal Rate
-    # Check if appeals exist
-    try:
-        appeals_count = conn.execute('''
-            SELECT COUNT(DISTINCT order_id) 
-            FROM order_appeals 
-            WHERE created_at BETWEEN ? AND ?
-        ''', (query_start, query_end)).fetchone()[0]
-    except:
-        appeals_count = 0
-        
-    appeal_rate = round((appeals_count / total_orders * 100), 2) if total_orders > 0 else 0
-    
-    # 5. Consumer Retention Rate
-    # Buyers with > 1 order in period
-    retention_stats = conn.execute('''
-        SELECT buyer_id, COUNT(*) as count
-        FROM orders
-        WHERE created_at BETWEEN ? AND ? AND status != 'inquiry'
-        GROUP BY buyer_id
-        HAVING count > 1
-    ''', (query_start, query_end)).fetchall()
-    repeat_buyers_count = len(retention_stats)
-    
-    total_buyers_count_row = conn.execute('''
-        SELECT COUNT(DISTINCT buyer_id)
-        FROM orders
-        WHERE created_at BETWEEN ? AND ? AND status != 'inquiry'
-    ''', (query_start, query_end)).fetchone()
-    total_buyers_count = total_buyers_count_row[0] if total_buyers_count_row else 0
-    
-    retention_rate = round((repeat_buyers_count / total_buyers_count * 100), 1) if total_buyers_count > 0 else 0
-    
-    # 6. Pet Types
-    pet_type_stats = conn.execute('''
-        SELECT l.pet_type, COUNT(*) as count
-        FROM orders o
-        JOIN listings l ON o.listing_id = l.id
-        WHERE o.created_at BETWEEN ? AND ?
-        GROUP BY l.pet_type
-    ''', (query_start, query_end)).fetchall()
-    pet_labels = []
-    pet_map = {'cat': '貓', 'dog': '狗'}
-    for row in pet_type_stats:
-        p_type = row['pet_type']
-        pet_labels.append(pet_map.get(p_type, p_type))
-    pet_data = [row['count'] for row in pet_type_stats]
-    
-    # 7. Popular Time Slots (Ongoing Orders)
-    time_raw_stats = conn.execute('''
-        SELECT booking_time, duration
-        FROM orders
-        WHERE created_at BETWEEN ? AND ? AND status != 'cancelled' AND status != 'rejected'
-    ''', (query_start, query_end)).fetchall()
-    
-    # Initialize 24-hour slots
-    hourly_counts = {h: 0 for h in range(24)}
-    
-    for row in time_raw_stats:
-        b_time = row['booking_time']
-        duration = row['duration']
-        
-        if b_time and ':' in b_time and duration:
-            try:
-                # Extract starting hour
-                start_hour = int(b_time.split(':')[0])
-                
-                # Increment count for each hour of duration using modulo 24 for overflow
-                for i in range(duration):
-                    current_hour = (start_hour + i) % 24
-                    hourly_counts[current_hour] += 1
-            except ValueError:
-                continue
-                
-    time_labels = [f"{h:02d}:00" for h in range(24)]
-    # Use 'ongoing_orders_data' instead of start/end
-    ongoing_orders_data = [hourly_counts[h] for h in range(24)]
-    
-    # 8. Trainer Rankings
-    trainer_stats = conn.execute('''
-        SELECT 
-            u.id as user_id,
-            u.name as trainer_name,
-            COUNT(*) as total_orders,
-            SUM(CASE WHEN o.status = 'completed' THEN 1 ELSE 0 END) as completed_count,
-            SUM(CASE WHEN o.status = 'completed' THEN o.total_price ELSE 0 END) as revenue,
-            SUM(CASE WHEN o.status = 'rejected' THEN 1 ELSE 0 END) as rejected_count
-        FROM orders o
-        JOIN users u ON o.seller_id = u.id
-        WHERE o.created_at BETWEEN ? AND ?
-        GROUP BY o.seller_id
-    ''', (query_start, query_end)).fetchall()
-    
-    # Appeals by trainer
-    try:
-        appeals_stats = conn.execute('''
-            SELECT o.seller_id, COUNT(*) as appeal_count
-            FROM order_appeals a
-            JOIN orders o ON a.order_id = o.id
-            WHERE a.created_at BETWEEN ? AND ?
-            GROUP BY o.seller_id
-        ''', (query_start, query_end)).fetchall()
-        appeal_map = {row['seller_id']: row['appeal_count'] for row in appeals_stats}
-    except:
-        appeal_map = {}
-    
-    all_trainers = []
-    for row in trainer_stats:
-        uid = row['user_id']
-        data = dict(row)
-        data['appeal_count'] = appeal_map.get(uid, 0)
-        # Handle None values from SUM
-        data['revenue'] = data['revenue'] if data['revenue'] else 0
-        all_trainers.append(data)
-        
-    rank_completed = sorted(all_trainers, key=lambda x: x['completed_count'], reverse=True)[:10]
-    rank_revenue = sorted(all_trainers, key=lambda x: x['revenue'], reverse=True)[:10]
-    rank_rejected = sorted(all_trainers, key=lambda x: x['rejected_count'], reverse=True)[:10]
-    rank_appealed = sorted(all_trainers, key=lambda x: x['appeal_count'], reverse=True)[:10]
-    
-    
-    return render_template('admin_statistics_dashboard.html', 
-                           start_date=start_date, end_date=end_date,
-                           total_amount=total_transaction_amount,
-                           net_revenue=platform_net_revenue,
-                           completion_rate=completion_rate,
-                           appeal_rate=appeal_rate,
-                           retention_rate=retention_rate,
-                           # Raw counts for tooltip display
-                           completed_orders=completed_orders,
-                           total_orders=total_orders,
-                           appeals_count=appeals_count,
-                           repeat_buyers_count=repeat_buyers_count,
-                           total_buyers_count=total_buyers_count,
-                           pet_labels=pet_labels,
-                           pet_data=pet_data,
-                           time_labels=time_labels,
-                           ongoing_orders_data=ongoing_orders_data,
-                           rank_completed=rank_completed,
-                           rank_revenue=rank_revenue,
-                           rank_rejected=rank_rejected,
-                           rank_appealed=rank_appealed,
-                           active_page='statistics')
+    context = stats_service.dashboard(request.args.get('start_date'), request.args.get('end_date'))
+    return render_template('admin_statistics_dashboard.html', active_page='statistics', **context)
 
 @bp.route('/admin/member-management/<int:user_id>')
 @role_required(Role.ADMIN)
@@ -744,71 +413,22 @@ def admin_appeals():
 @bp.route('/admin/appeal/<int:appeal_id>', methods=('GET', 'POST'))
 @role_required(Role.ADMIN)
 def admin_appeal_detail(appeal_id):
-    conn = get_db()
-    
     if request.method == 'POST':
         action = request.form.get('action')
         message = request.form.get('admin_reply', '').strip()
-        
-        # Handle message sending (reply_only)
         if action == 'reply_only':
-            if message:
-                conn.execute(f'''
-                    INSERT INTO appeal_messages (appeal_id, sender_id, sender_role, message, created_at)
-                    VALUES (?, ?, 'admin', ?, {NOW_SQL})
-                ''', (appeal_id, session['user_id'], message))
-                conn.commit()
+            appeal_service.admin_reply(appeal_id, session['user_id'], message)
             flash('留言已送出', 'success')
             return redirect(url_for('admin.admin_appeal_detail', appeal_id=appeal_id))
-        else:
-            # Handle status change actions
-            if action == 'resolve':
-                status = 'resolved'
-            elif action == 'close':
-                status = 'closed'
-            else:
-                status = 'processing'
-            
-            # Insert message if provided with status change
-            if message:
-                conn.execute(f'''
-                    INSERT INTO appeal_messages (appeal_id, sender_id, sender_role, message, created_at)
-                    VALUES (?, ?, 'admin', ?, {NOW_SQL})
-                ''', (appeal_id, session['user_id'], message))
-                
-            conn.execute(f'''
-                UPDATE order_appeals 
-                SET status = ?, updated_at = {NOW_SQL}
-                WHERE id = ?
-            ''', (status, appeal_id))
-            conn.commit()
-            flash('案件狀態已更新', 'success')
-            return redirect(url_for('admin.admin_appeals'))
-        
-    appeal = conn.execute('''
-        SELECT a.*, o.booking_date, o.booking_time, o.total_price, 
-               u.name as user_name, u.email as user_email, u.phone as user_phone,
-               s.name as seller_name, s.email as seller_email
-        FROM order_appeals a
-        JOIN orders o ON a.order_id = o.id
-        JOIN users u ON a.user_id = u.id
-        JOIN users s ON o.seller_id = s.id
-        WHERE a.id = ?
-    ''', (appeal_id,)).fetchone()
-    
+        appeal_service.admin_set_status(appeal_id, session['user_id'], action, message)
+        flash('案件狀態已更新', 'success')
+        return redirect(url_for('admin.admin_appeals'))
+
+    appeal = appeal_service.admin_appeal(appeal_id)
     if not appeal:
         return redirect(url_for('admin.admin_appeals'))
-    
-    # Fetch all messages
-    messages = conn.execute('''
-        SELECT m.*, u.name as sender_name, u.nickname as sender_nickname
-        FROM appeal_messages m
-        JOIN users u ON m.sender_id = u.id
-        WHERE m.appeal_id = ?
-        ORDER BY m.created_at ASC
-    ''', (appeal_id,)).fetchall()
-
-    return render_template('admin_appeal_detail.html', appeal=appeal, messages=messages, active_page='appeals', title='案件詳情')
+    return render_template('admin_appeal_detail.html', appeal=appeal, messages=appeal_service.messages(appeal_id),
+                           active_page='appeals', title='案件詳情')
 
 @bp.route('/admin/platform-settings', methods=('GET', 'POST'))
 @role_required(Role.ADMIN)
