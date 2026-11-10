@@ -1,7 +1,7 @@
 """Trainer payouts, commission, levels, withdrawals and the platform account."""
 from pet_platform.constants import TrainerLevel
-from pet_platform.db import ensure_platform_tables, get_db
-from pet_platform.services import ServiceError
+from pet_platform.db import get_db
+from pet_platform.services import bank_account_service, ServiceError
 from pet_platform.utils.time import NOW_SQL
 
 DEFAULT_SETTINGS = {
@@ -71,7 +71,6 @@ def update_trainer_level(trainer_id):
 # ---------------------------------------------------------------------------
 
 def get_platform_account():
-    ensure_platform_tables()
     account = get_db().execute('SELECT * FROM platform_account LIMIT 1').fetchone()
     return dict(account) if account else {'id': 1, 'balance': 0.0}
 
@@ -95,7 +94,6 @@ def _apply_platform_balance(conn, amount, transaction_type, description, order_i
 
 def update_platform_balance(amount, transaction_type, description, order_id=None, withdrawal_id=None):
     """Update the platform balance in its own commit."""
-    ensure_platform_tables()
     conn = get_db()
     new_balance = _apply_platform_balance(conn, amount, transaction_type, description, order_id, withdrawal_id)
     conn.commit()
@@ -122,9 +120,6 @@ def process_order_payment_to_trainer(order_id):
     ).fetchone()
     if already_paid:
         return False
-
-    # Creates the platform tables if missing; it commits, so run it before our own writes.
-    ensure_platform_tables()
 
     trainer_id = order['seller_id']
     commission_rate = get_trainer_commission_rate(trainer_id)
@@ -229,15 +224,7 @@ def request_withdrawal(user_id, balance, amount_raw, bank_code, bank_account, ac
 
     conn = get_db()
     if save_account:
-        existing = conn.execute('''
-            SELECT id FROM trainer_bank_accounts
-            WHERE user_id = ? AND bank_code = ? AND bank_account = ?
-        ''', (user_id, bank_code, bank_account)).fetchone()
-        if not existing:
-            conn.execute(f'''
-                INSERT INTO trainer_bank_accounts (user_id, bank_code, bank_account, account_holder, created_at)
-                VALUES (?, ?, ?, ?, {NOW_SQL})
-            ''', (user_id, bank_code, bank_account, account_holder))
+        bank_account_service.remember_trainer_account(user_id, bank_code, bank_account, account_holder)
 
     conn.execute(f'''
         INSERT INTO withdrawal_requests

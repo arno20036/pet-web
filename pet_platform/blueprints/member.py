@@ -4,7 +4,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from pet_platform.constants import OrderStatus, PaymentStatus
 from pet_platform.db import get_db
 from pet_platform.decorators import login_required
-from pet_platform.services import order_service, payment_service, ServiceError
+from pet_platform.services import bank_account_service, order_service, payment_service, ServiceError
 from pet_platform.utils.time import NOW_SQL
 from pet_platform.utils.uploads import file_extension, save_upload
 
@@ -14,32 +14,19 @@ bp = Blueprint('member', __name__)
 @bp.route('/member/bank_account', methods=['POST'])
 @login_required
 def add_bank_account():
-    bank_code = request.form.get('bank_code')
-    branch_code = request.form.get('branch_code')
-    account_number = request.form.get('account_number')
-    account_name = request.form.get('account_name')
-    
-    if not all([bank_code, account_number, account_name]):
+    form = request.form
+    if not all([form.get('bank_code'), form.get('account_number'), form.get('account_name')]):
         flash('請填寫完整銀行帳戶資訊', 'error')
         return redirect(url_for('member.member_profile'))
-        
-    conn = get_db()
-    conn.execute('''
-        INSERT INTO user_bank_accounts (user_id, bank_code, branch_code, account_number, account_name)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (session['user_id'], bank_code, branch_code, account_number, account_name))
-    conn.commit()
-    
+    bank_account_service.add_member_account(session['user_id'], form['bank_code'], form['account_number'],
+                                            form['account_name'], branch_code=form.get('branch_code'))
     flash('銀行帳戶已新增', 'success')
     return redirect(url_for('member.member_profile'))
 
 @bp.route('/member/bank_account/<int:account_id>/delete', methods=['POST'])
 @login_required
 def delete_user_bank_account(account_id):
-    conn = get_db()
-    conn.execute('DELETE FROM user_bank_accounts WHERE id = ? AND user_id = ?', (account_id, session['user_id']))
-    conn.commit()
-    
+    bank_account_service.delete_account('member', account_id, session['user_id'])
     flash('銀行帳戶已刪除', 'success')
     return redirect(url_for('member.member_profile'))
 
@@ -81,11 +68,8 @@ def member_profile():
             
     user = conn.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
     
-    # Fetch bank accounts
-    bank_accounts = conn.execute('SELECT * FROM user_bank_accounts WHERE user_id = ? ORDER BY created_at DESC', 
-                                (session['user_id'],)).fetchall()
-    
-    return render_template('member_profile.html', user=user, bank_accounts=[dict(b) for b in bank_accounts], active_page='profile')
+    bank_accounts = bank_account_service.list_accounts('member', session['user_id'])
+    return render_template('member_profile.html', user=user, bank_accounts=bank_accounts, active_page='profile')
 
 @bp.route('/member/orders')
 @login_required

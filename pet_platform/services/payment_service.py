@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import current_app
 
 from pet_platform.constants import OrderStatus, PaymentStatus
-from pet_platform.db import ensure_platform_tables, get_db
+from pet_platform.db import get_db
 from pet_platform.services import ServiceError
 from pet_platform.services.ledger_service import _apply_platform_balance
 from pet_platform.utils.time import NOW_SQL
@@ -204,7 +204,6 @@ def process_refund_task(task, admin_id, source):
 
     All three changes are written in one commit. `source` only labels the log line.
     """
-    ensure_platform_tables()  # commits; must run before our writes
     conn = get_db()
     try:
         conn.execute(f'''

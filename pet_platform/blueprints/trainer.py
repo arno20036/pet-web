@@ -7,7 +7,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from pet_platform.constants import OrderStatus, Role, TrainerLevel
 from pet_platform.db import get_db
 from pet_platform.decorators import role_required
-from pet_platform.services import ledger_service, listing_service, order_service, ServiceError
+from pet_platform.services import bank_account_service, ledger_service, listing_service, order_service, ServiceError
 from pet_platform.utils.uploads import save_upload
 
 bp = Blueprint('trainer', __name__)
@@ -328,18 +328,12 @@ def trainer_withdrawal():
         except ServiceError as e:
             flash(e.message, e.category)
 
-    # Get saved bank accounts
-    saved_accounts = conn.execute('''
-        SELECT * FROM trainer_bank_accounts WHERE user_id = ? ORDER BY created_at DESC
-    ''', (session['user_id'],)).fetchall()
-    
-    
     return render_template('trainer_withdrawal.html',
                           title='申請提領',
                           active_page='account',
                           account=account,
                           balance=account['balance'],
-                          saved_accounts=[dict(row) for row in saved_accounts])
+                          saved_accounts=bank_account_service.list_accounts('trainer', session['user_id']))
 
 @bp.route('/trainer/reviews')
 @role_required(Role.TRAINER)

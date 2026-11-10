@@ -340,6 +340,54 @@ def respond_reschedule(order_id, trainer_id, action):
 
 PET_TYPE_LABELS = {'dog': '狗', 'cat': '貓'}
 
+# Per role: whose orders, and the SELECT/FROM showing the other party.
+_LIST_ROLES = {
+    'member': {
+        'owner': 'o.buyer_id',
+        'select': 'o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname',
+        'from': 'orders o LEFT JOIN listings l ON o.listing_id = l.id JOIN users u ON o.seller_id = u.id',
+    },
+    'trainer': {
+        'owner': 'o.seller_id',
+        'select': ('o.*, u.name as buyer_name, u.phone as buyer_phone, u.nickname as buyer_nickname, '
+                   'u.email as buyer_email, u.avatar as buyer_avatar, l.pet_name, l.pet_type'),
+        'from': 'orders o JOIN users u ON o.buyer_id = u.id LEFT JOIN listings l ON o.listing_id = l.id',
+    },
+}
+
+# (role, scope) -> (extra WHERE condition, ORDER BY, join the order's appeal?)
+# Inquiry (chat-only) orders never appear in these lists.
+_LIST_SCOPES = {
+    ('member', 'pending'): ("o.status = 'pending'", 'o.booking_date, o.booking_time', False),
+    ('member', 'upcoming'): ("((o.status = 'confirmed' AND o.booking_date >= :today) OR o.status = 'in_progress')",
+                             'o.booking_date, o.booking_time', True),
+    ('member', 'history'): ("(o.status NOT IN ('confirmed', 'pending', 'in_progress', 'inquiry') "
+                            "OR (o.status = 'confirmed' AND o.booking_date < :today))",
+                            'o.booking_date DESC, o.booking_time DESC', True),
+    ('trainer', 'pending'): ("o.status = 'pending'", 'o.created_at ASC', False),
+    ('trainer', 'history'): ("o.status NOT IN ('pending', 'inquiry')", 'o.booking_date DESC, o.booking_time DESC', False),
+}
+
+
+def list_orders(user_id, role, scope, start_date=None, end_date=None):
+    """Orders of one member/trainer for one tab of the orders page, optionally filtered by booking date."""
+    who = _LIST_ROLES[role]
+    condition, order_by, with_appeal = _LIST_SCOPES[(role, scope)]
+    select, from_ = who['select'], who['from']
+    if with_appeal:
+        select += ', a.status as appeal_status, a.id as appeal_id'
+        from_ += ' LEFT JOIN order_appeals a ON o.id = a.order_id'
+
+    sql = f"SELECT {select} FROM {from_} WHERE {who['owner']} = :uid AND {condition}"
+    params = {'uid': user_id, 'today': date.today().strftime('%Y-%m-%d')}
+    if start_date:
+        sql += ' AND o.booking_date >= :start'
+        params['start'] = start_date
+    if end_date:
+        sql += ' AND o.booking_date <= :end'
+        params['end'] = end_date
+    return get_db().execute(f'{sql} ORDER BY {order_by}', params).fetchall()
+
 
 def _time_range(o):
     start_h = int(o['booking_time'].split(':')[0])
@@ -347,25 +395,21 @@ def _time_range(o):
     return f"{start_h:02d}:00 - {start_h + duration:02d}:00", duration
 
 
-def _with_date_filter(query, params, start_date, end_date):
-    if start_date:
-        query += " AND o.booking_date >= ?"
-        params.append(start_date)
-    if end_date:
-        query += " AND o.booking_date <= ?"
-        params.append(end_date)
-    return query, tuple(params)
-
-
-def _decorate_member_order(conn, row, user_id):
+def _decorate(conn, row, user_id):
+    """Fields both roles need: has_reviewed, time_range, total_price fallback."""
     o = dict(row)
     o['has_reviewed'] = bool(conn.execute('SELECT 1 FROM reviews WHERE order_id = ? AND source_user_id = ?',
                                           (o['id'], user_id)).fetchone())
-    if o.get('pet_type') in PET_TYPE_LABELS:
-        o['pet_type'] = PET_TYPE_LABELS[o['pet_type']]
     o['time_range'], duration = _time_range(o)
     if not o['total_price']:
         o['total_price'] = (o['price_at_booking'] or 0) * duration
+    return o
+
+
+def _decorate_member_order(conn, row, user_id):
+    o = _decorate(conn, row, user_id)
+    if o.get('pet_type') in PET_TYPE_LABELS:
+        o['pet_type'] = PET_TYPE_LABELS[o['pet_type']]
 
     resch_req = conn.execute('SELECT status FROM reschedule_requests WHERE order_id = ? ORDER BY created_at DESC LIMIT 1',
                              (o['id'],)).fetchone()
@@ -384,73 +428,10 @@ def _decorate_member_order(conn, row, user_id):
     return o
 
 
-def list_member_orders(user_id, start_date=None, end_date=None):
-    """Pending / upcoming / history lists for the member orders page (inquiry orders excluded)."""
-    conn = get_db()
-    orders_rows = conn.execute('''
-        SELECT o.*,
-               u.name as trainer_name, u.nickname as trainer_nickname, u.avatar as trainer_avatar,
-               l.pet_name, l.pet_type, l.pet_image
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        WHERE o.buyer_id = ?
-        ORDER BY o.booking_date DESC, o.booking_time DESC
-    ''', (user_id,)).fetchall()
-
-    today = date.today().strftime('%Y-%m-%d')
-
-    upcoming_query, upcoming_params = _with_date_filter('''
-        SELECT o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname,
-               a.status as appeal_status, a.id as appeal_id
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        LEFT JOIN order_appeals a ON o.id = a.order_id
-        WHERE o.buyer_id = ?
-        AND ((o.status = "confirmed" AND o.booking_date >= ?) OR o.status = "in_progress")
-        AND o.status != 'inquiry'
-    ''', [user_id, today], start_date, end_date)
-    upcoming_rows = conn.execute(upcoming_query + " ORDER BY o.booking_date, o.booking_time", upcoming_params).fetchall()
-
-    history_query, history_params = _with_date_filter('''
-        SELECT o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname,
-               a.status as appeal_status, a.id as appeal_id
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        LEFT JOIN order_appeals a ON o.id = a.order_id
-        WHERE o.buyer_id = ?
-        AND ((o.status != "confirmed" AND o.status != 'pending' AND o.status != 'in_progress') OR (o.status = "confirmed" AND o.booking_date < ?))
-        AND o.status != 'inquiry'
-    ''', [user_id, today], start_date, end_date)
-    history_rows = conn.execute(history_query + " ORDER BY o.booking_date DESC, o.booking_time DESC", history_params).fetchall()
-
-    pending_query, pending_params = _with_date_filter('''
-        SELECT o.*, l.pet_name, l.pet_type, l.available_slots, u.name as trainer_name, u.nickname as trainer_nickname
-        FROM orders o
-        LEFT JOIN listings l ON o.listing_id = l.id
-        JOIN users u ON o.seller_id = u.id
-        WHERE o.buyer_id = ? AND o.status = "pending"
-    ''', [user_id], start_date, end_date)
-    pending_rows = conn.execute(pending_query + " ORDER BY o.booking_date, o.booking_time", pending_params).fetchall()
-
-    return {
-        'pending_orders': [_decorate_member_order(conn, r, user_id) for r in pending_rows],
-        'upcoming_orders': [_decorate_member_order(conn, r, user_id) for r in upcoming_rows],
-        'history_orders': [_decorate_member_order(conn, r, user_id) for r in history_rows],
-    }
-
-
 def _decorate_trainer_order(conn, row, user_id):
-    o = dict(row)
-    o['has_reviewed'] = bool(conn.execute('SELECT 1 FROM reviews WHERE order_id = ? AND source_user_id = ?',
-                                          (o['id'], user_id)).fetchone())
+    o = _decorate(conn, row, user_id)
     if 'pet_type' in o:
         o['listing_pet_type'] = PET_TYPE_LABELS.get(o['pet_type'], o['pet_type'])
-    o['time_range'], duration = _time_range(o)
-    if not o['total_price']:
-        o['total_price'] = (o['price_at_booking'] or 0) * duration
     reschedule = conn.execute('SELECT * FROM reschedule_requests WHERE order_id = ? AND status = "pending"',
                               (o['id'],)).fetchone()
     if reschedule:
@@ -458,33 +439,21 @@ def _decorate_trainer_order(conn, row, user_id):
     return o
 
 
+def list_member_orders(user_id, start_date=None, end_date=None):
+    """pending / upcoming / history lists for the member orders page."""
+    conn = get_db()
+    return {f'{scope}_orders': [_decorate_member_order(conn, r, user_id)
+                                for r in list_orders(user_id, 'member', scope, start_date, end_date)]
+            for scope in ('pending', 'upcoming', 'history')}
+
+
 def list_trainer_orders(user_id):
     """pending / accepted / ongoing / history lists for the trainer orders page."""
     conn = get_db()
-    pending_rows = conn.execute('''
-        SELECT o.*,
-               u.name as buyer_name, u.phone as buyer_phone, u.nickname as buyer_nickname, u.email as buyer_email, u.avatar as buyer_avatar,
-               l.pet_name, l.pet_type
-        FROM orders o
-        JOIN users u ON o.buyer_id = u.id
-        LEFT JOIN listings l ON o.listing_id = l.id
-        WHERE o.seller_id = ? AND o.status = 'pending'
-        ORDER BY o.created_at ASC
-    ''', (user_id,)).fetchall()
-    history_rows = conn.execute('''
-        SELECT o.*,
-               u.name as buyer_name, u.phone as buyer_phone, u.nickname as buyer_nickname, u.email as buyer_email, u.avatar as buyer_avatar,
-               l.pet_name, l.pet_type
-        FROM orders o
-        JOIN users u ON o.buyer_id = u.id
-        LEFT JOIN listings l ON o.listing_id = l.id
-        WHERE o.seller_id = ? AND o.status != 'pending' AND o.status != 'inquiry'
-        ORDER BY o.booking_date DESC, o.booking_time DESC
-    ''', (user_id,)).fetchall()
-
-    lists = {'pending_orders': [_decorate_trainer_order(conn, r, user_id) for r in pending_rows],
+    lists = {'pending_orders': [_decorate_trainer_order(conn, r, user_id) for r in list_orders(user_id, 'trainer', 'pending')],
              'accepted_orders': [], 'ongoing_orders': [], 'history_orders': []}
-    for o in (_decorate_trainer_order(conn, r, user_id) for r in history_rows):
+    for row in list_orders(user_id, 'trainer', 'history'):
+        o = _decorate_trainer_order(conn, row, user_id)
         if o['status'] == OrderStatus.CONFIRMED:
             lists['accepted_orders'].append(o)
         elif o['status'] == OrderStatus.IN_PROGRESS:

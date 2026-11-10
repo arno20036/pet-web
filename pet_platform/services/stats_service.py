@@ -187,56 +187,65 @@ def dashboard(start_date, end_date):
 
 
 # ---------------------------------------------------------------------------
-# sidebar badges
+# sidebar badges (one query per role)
 # ---------------------------------------------------------------------------
 
-def _count(conn, sql, params=()):
-    return conn.execute(sql, params).fetchone()[0]
+def _n(condition):
+    """Count rows matching `condition` inside an aggregate query (0 for an empty table)."""
+    return f"COALESCE(SUM(CASE WHEN {condition} THEN 1 ELSE 0 END), 0)"
+
+
+# "... AS pending, ... AS confirmed, ... AS in_progress"
+_ORDER_STATUS_COUNTS = ', '.join(_n("status = '%s'" % s) + ' AS ' + s for s in ('pending', 'confirmed', 'in_progress'))
+
+_ADMIN_COUNTS_SQL = f'''
+    SELECT l.*, ta.*, w.*, r.*, o.*
+    FROM (SELECT {_n("status = 'pending'")} AS pending_listings,
+                 {_n("status = 'modification_pending'")} AS pending_modifications
+          FROM listings) l,
+         (SELECT COUNT(*) AS pending_trainers FROM trainer_applications WHERE status = 'pending') ta,
+         (SELECT COUNT(*) AS pending_withdrawals FROM withdrawal_requests WHERE status = 'pending') w,
+         (SELECT COUNT(*) AS refund_tasks FROM refund_tasks WHERE status = 'pending') r,
+         (SELECT
+              -- paid by buyer, not yet confirmed by admin (paid supplements match this too)
+              {_n("o.payment_status = 'paid' AND (o.payment_confirmed IS NULL OR o.payment_confirmed = 0)")} AS pending_payments,
+              -- buyer still owes a supplement
+              {_n("o.paid_amount IS NOT NULL AND o.paid_amount > 0 AND o.paid_amount < o.total_price AND o.status NOT IN ('cancelled', 'rejected')")} AS underpaid,
+              -- paid supplement waiting for confirmation (same rule as the admin refunds page)
+              {_n(f"o.payment_confirmed = 0 AND o.payment_status = 'paid' AND {PAID_SUPPLEMENT_SQL} AND o.status NOT IN ('cancelled', 'rejected')")} AS paid_supplements
+          FROM orders o) o
+'''
 
 
 def sidebar_counts(user_id, role):
     conn = get_db()
-    counts = {}
     if role == Role.TRAINER:
-        pending = _count(conn, "SELECT COUNT(*) FROM orders WHERE seller_id = ? AND status = 'pending'", (user_id,))
-        confirmed = _count(conn, "SELECT COUNT(*) FROM orders WHERE seller_id = ? AND status = 'confirmed'", (user_id,))
-        ongoing = _count(conn, "SELECT COUNT(*) FROM orders WHERE seller_id = ? AND status = 'in_progress'", (user_id,))
-        counts['trainer_pending_orders'] = pending
-        counts['trainer_confirmed_orders'] = confirmed
-        counts['trainer_calendar_count'] = confirmed + ongoing
-        # Order Management badge: orders still waiting on the trainer (pending + confirmed)
-        counts['trainer_badge_count'] = pending + confirmed
-
+        c = conn.execute(f'SELECT {_ORDER_STATUS_COUNTS} FROM orders WHERE seller_id = ?', (user_id,)).fetchone()
+        return {
+            'trainer_pending_orders': c['pending'],
+            'trainer_confirmed_orders': c['confirmed'],
+            'trainer_calendar_count': c['confirmed'] + c['in_progress'],
+            # Order Management badge: orders still waiting on the trainer
+            'trainer_badge_count': c['pending'] + c['confirmed'],
+        }
     if role == Role.ADMIN:
-        counts['admin_pending_listings'] = _count(conn, "SELECT COUNT(*) FROM listings WHERE status = 'pending'")
-        counts['admin_pending_trainers'] = _count(conn, "SELECT COUNT(*) FROM trainer_applications WHERE status = 'pending'")
-        counts['admin_pending_withdrawals'] = _count(conn, "SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'pending'")
-        # Paid by buyer but not yet confirmed by admin. Paid supplements also match this,
-        # so they are counted both here (Order Tracking) and in the Refunds badge below.
-        counts['admin_pending_payments'] = _count(conn, "SELECT COUNT(*) FROM orders WHERE payment_status = 'paid' AND (payment_confirmed IS NULL OR payment_confirmed = 0)")
-        counts['admin_pending_modifications'] = _count(conn, "SELECT COUNT(*) FROM listings WHERE status = 'modification_pending'")
-
-        refund_tasks = _count(conn, "SELECT COUNT(*) FROM refund_tasks WHERE status = 'pending'")
-        # Underpaid orders (buyer still owes a supplement)
-        underpaid = _count(conn, "SELECT COUNT(*) FROM orders WHERE paid_amount IS NOT NULL AND paid_amount > 0 AND paid_amount < total_price AND status NOT IN ('cancelled', 'rejected')")
-        # Paid supplements waiting for confirmation (same rule as the admin refunds page)
-        paid_supplements = _count(conn, f"""
-            SELECT COUNT(*)
-            FROM orders o
-            WHERE o.payment_confirmed = 0
-            AND o.payment_status = 'paid'
-            AND {PAID_SUPPLEMENT_SQL}
-            AND o.status NOT IN ('cancelled', 'rejected')
-        """)
-        counts['admin_tab_refund_count'] = refund_tasks
-        counts['admin_tab_supplement_count'] = underpaid + paid_supplements
-        counts['admin_pending_refunds'] = refund_tasks + underpaid + paid_supplements
-
+        c = conn.execute(_ADMIN_COUNTS_SQL).fetchone()
+        supplements = c['underpaid'] + c['paid_supplements']
+        return {
+            'admin_pending_listings': c['pending_listings'],
+            'admin_pending_trainers': c['pending_trainers'],
+            'admin_pending_withdrawals': c['pending_withdrawals'],
+            'admin_pending_payments': c['pending_payments'],
+            'admin_pending_modifications': c['pending_modifications'],
+            'admin_tab_refund_count': c['refund_tasks'],
+            'admin_tab_supplement_count': supplements,
+            'admin_pending_refunds': c['refund_tasks'] + supplements,
+        }
     if role == Role.MEMBER:
-        pending = _count(conn, "SELECT COUNT(*) FROM orders WHERE buyer_id = ? AND status = 'pending'", (user_id,))
-        confirmed = _count(conn, "SELECT COUNT(*) FROM orders WHERE buyer_id = ? AND status = 'confirmed'", (user_id,))
-        in_progress = _count(conn, "SELECT COUNT(*) FROM orders WHERE buyer_id = ? AND status = 'in_progress'", (user_id,))
-        counts['member_pending_orders'] = pending
-        counts['member_upcoming_orders'] = confirmed + in_progress
-        counts['member_badge_count'] = pending + confirmed + in_progress
-    return counts
+        c = conn.execute(f'SELECT {_ORDER_STATUS_COUNTS} FROM orders WHERE buyer_id = ?', (user_id,)).fetchone()
+        return {
+            'member_pending_orders': c['pending'],
+            'member_upcoming_orders': c['confirmed'] + c['in_progress'],
+            'member_badge_count': c['pending'] + c['confirmed'] + c['in_progress'],
+        }
+    return {}

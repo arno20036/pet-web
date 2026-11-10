@@ -6,6 +6,7 @@ from flask import current_app, request, session
 from pet_platform.constants import Role
 from pet_platform.db import get_db
 from pet_platform.decorators import login_required, role_required
+from pet_platform.services import bank_account_service
 
 from pet_platform.blueprints.api import bp
 
@@ -19,55 +20,32 @@ def delete_payment_method(method_id):
     
     return {'success': True}
 
+# Bank accounts: the old URLs stay, all backed by bank_account_service.
 @bp.route('/api/bank_accounts/<int:account_id>', methods=['DELETE'])
 @login_required(json=True)
 def delete_bank_account(account_id):
-    conn = get_db()
-    conn.execute('DELETE FROM trainer_bank_accounts WHERE id = ? AND user_id = ?', (account_id, session['user_id']))
-    conn.commit()
-    
+    bank_account_service.delete_account('trainer', account_id, session['user_id'])
     return {'success': True}
 
-# Bank Account APIs
 @bp.route('/api/user/bank-accounts', methods=['GET'])
 @login_required(json=True)
 def get_user_bank_accounts():
-    conn = get_db()
-    accounts = conn.execute('SELECT * FROM user_bank_accounts WHERE user_id = ? ORDER BY is_default DESC, created_at DESC', (session['user_id'],)).fetchall()
-    
-    return {'accounts': [dict(a) for a in accounts]}
+    return {'accounts': bank_account_service.list_accounts('member', session['user_id'], default_first=True)}
 
 @bp.route('/api/user/bank-accounts', methods=['POST'])
 @login_required(json=True)
 def add_user_bank_account():
     data = request.get_json()
-    bank_code = data.get('bank_code')
-    account_number = data.get('account_number')
-    account_name = data.get('account_name')
-    is_default = data.get('is_default', False)
-    
-    if not all([bank_code, account_number, account_name]):
+    if not all([data.get('bank_code'), data.get('account_number'), data.get('account_name')]):
         return {'error': 'Missing fields'}, 400
-        
-    conn = get_db()
-    if is_default:
-        conn.execute('UPDATE user_bank_accounts SET is_default = 0 WHERE user_id = ?', (session['user_id'],))
-        
-    conn.execute('''
-        INSERT INTO user_bank_accounts (user_id, bank_code, account_number, account_name, is_default)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (session['user_id'], bank_code, account_number, account_name, is_default))
-    conn.commit()
-    
+    bank_account_service.add_member_account(session['user_id'], data['bank_code'], data['account_number'],
+                                            data['account_name'], is_default=data.get('is_default', False))
     return {'success': True}
 
 @bp.route('/api/user/bank-accounts/<int:account_id>', methods=['DELETE'])
 @login_required(json=True)
 def api_delete_user_bank_account(account_id):
-    conn = get_db()
-    conn.execute('DELETE FROM user_bank_accounts WHERE id = ? AND user_id = ?', (account_id, session['user_id']))
-    conn.commit()
-    
+    bank_account_service.delete_account('member', account_id, session['user_id'])
     return {'success': True}
 
 @bp.route('/api/blacklist/add', methods=['POST'])
