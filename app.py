@@ -1,58 +1,31 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
-import sqlite3
-from werkzeug.security import generate_password_hash, check_password_hash
+import json
 import os
-from datetime import datetime, timedelta, timezone
+import re
+import sqlite3
+import time
+import uuid
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import date, datetime, timedelta
+
+from pet_platform import db
+from pet_platform.constants import OrderStatus, PaymentStatus, ReviewType, Role, TrainerLevel
+from pet_platform.db import get_db
+from pet_platform.decorators import login_required, role_required
+from pet_platform.utils.time import NOW_SQL, now_utc8, utc8_filter
+from pet_platform.utils.uploads import file_extension, save_upload
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 app.config['UPLOAD_FOLDER'] = 'uploads'
-
-
-DB_NAME = 'database.db'
-
-# Timezone utility - UTC+8 (Taipei Time)
-TZ_UTC8 = timezone(timedelta(hours=8))
-
-def get_current_time():
-    """Get current time in UTC+8 timezone"""
-    return datetime.now(TZ_UTC8)
-
-def format_datetime(dt_str=None):
-    """Format datetime string to UTC+8"""
-    if dt_str is None:
-        return get_current_time().strftime('%Y-%m-%d %H:%M:%S')
-    return dt_str
-
-# Jinja2 filter for displaying timestamps in UTC+8
-@app.template_filter('utc8')
-def utc8_filter(dt_str):
-    """Convert timestamp to UTC+8 for display"""
-    if not dt_str:
-        return ''
-    try:
-        # Parse the datetime string (assuming it's in UTC or local time)
-        if isinstance(dt_str, str):
-            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-        else:
-            dt = dt_str
-        
-        # If datetime is naive (no timezone), assume it's UTC
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        
-        # Convert to UTC+8
-        dt_utc8 = dt.astimezone(TZ_UTC8)
-        return dt_utc8.strftime('%Y-%m-%d %H:%M:%S')
-    except:
-        # If parsing fails, return original string
-        return str(dt_str)
+app.config['DATABASE'] = 'database.db'
+db.init_app(app)
+app.add_template_filter(utc8_filter, 'utc8')
 
 # Helper functions for trainer account system
 def get_platform_settings():
-    conn = get_db_connection()
+    conn = get_db()
     settings = conn.execute('SELECT * FROM platform_settings LIMIT 1').fetchone()
-    conn.close()
     if settings:
         return dict(settings)
     return {
@@ -65,28 +38,25 @@ def get_platform_settings():
     }
 
 def get_trainer_commission_rate(trainer_id):
-    conn = get_db_connection()
+    conn = get_db()
     account = conn.execute('SELECT current_level FROM trainer_accounts WHERE user_id = ?', (trainer_id,)).fetchone()
-    conn.close()
     
     settings = get_platform_settings()
     
-    level = account['current_level'] if account and account['current_level'] else 'general'
+    level = account['current_level'] if account and account['current_level'] else TrainerLevel.GENERAL
     
-    if level == 'professional':
+    if level == TrainerLevel.PROFESSIONAL:
         return settings.get('commission_professional', 5.0)
-    elif level == 'advanced':
+    elif level == TrainerLevel.ADVANCED:
         return settings.get('commission_advanced', 10.0)
     else:
         # Default or general
         return settings.get('commission_general', 15.0)
 
 def update_trainer_level(trainer_id):
-    conn = get_db_connection()
-    # specific AVG of rating for buyer_to_trainer reviews?
-    # Actually reviews table has review_type. We should filter by review_type='buyer_to_trainer' and target_user_id=trainer_id
-    # But wait, submit_review logic says target_user_id is the person being reviewed.
-    
+    conn = get_db()
+    # Level is based on the average of reviews buyers gave this trainer
+    # (target_user_id is the person being reviewed).
     avg_row = conn.execute('''
         SELECT AVG(rating) as avg_rating 
         FROM reviews 
@@ -96,16 +66,16 @@ def update_trainer_level(trainer_id):
     avg_rating = avg_row['avg_rating'] if avg_row and avg_row['avg_rating'] else 0
     
     settings = get_platform_settings()
-    new_level = 'general'
+    new_level = TrainerLevel.GENERAL
     
     if avg_rating >= settings.get('level_pro_threshold', 4.5):
-        new_level = 'professional'
+        new_level = TrainerLevel.PROFESSIONAL
     elif avg_rating >= settings.get('level_adv_threshold', 4.0):
-        new_level = 'advanced'
+        new_level = TrainerLevel.ADVANCED
         
     # Get current level
     current_level_row = conn.execute('SELECT current_level FROM trainer_accounts WHERE user_id = ?', (trainer_id,)).fetchone()
-    current_level = current_level_row['current_level'] if current_level_row else 'general'
+    current_level = current_level_row['current_level'] if current_level_row else TrainerLevel.GENERAL
         
     conn.execute('UPDATE trainer_accounts SET current_level = ? WHERE user_id = ?', (new_level, trainer_id))
     
@@ -117,29 +87,12 @@ def update_trainer_level(trainer_id):
         ''', (trainer_id, current_level, new_level))
         
     conn.commit()
-    conn.close()
     return new_level
-
-def get_or_create_trainer_account(user_id):
-    """Get or create trainer account"""
-    conn = get_db_connection()
-    account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?', (user_id,)).fetchone()
-    
-    if not account:
-        conn.execute('''
-            INSERT INTO trainer_accounts (user_id, balance, total_earned, created_at, updated_at)
-            VALUES (?, 0.0, 0.0, datetime('now', 'localtime'), datetime('now', 'localtime'))
-        ''', (user_id,))
-        conn.commit()
-        account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?', (user_id,)).fetchone()
-    
-    conn.close()
-    return dict(account) if account else None
 
 # Platform Account System
 def ensure_platform_tables():
     """Ensure platform account tables exist"""
-    conn = get_db_connection()
+    conn = get_db()
     # Create platform_account table
     conn.execute('''
         CREATE TABLE IF NOT EXISTS platform_account (
@@ -163,16 +116,15 @@ def ensure_platform_tables():
     # Ensure at least one platform account record exists
     existing = conn.execute('SELECT * FROM platform_account LIMIT 1').fetchone()
     if not existing:
-        conn.execute('''
+        conn.execute(f'''
             INSERT INTO platform_account (balance, updated_at)
-            VALUES (0.0, datetime('now', 'localtime'))
+            VALUES (0.0, {NOW_SQL})
         ''')
     conn.commit()
-    conn.close()
 
 def ensure_reschedule_tables():
     """Ensure reschedule and refund tables exist"""
-    conn = get_db_connection()
+    conn = get_db()
     
     # Reschedule Requests Table
     conn.execute('''
@@ -223,53 +175,48 @@ def ensure_reschedule_tables():
     ''')
     
     conn.commit()
-    conn.close()
 
 def get_platform_account():
     """Get platform account balance"""
     ensure_platform_tables()
-    conn = get_db_connection()
+    conn = get_db()
     account = conn.execute('SELECT * FROM platform_account LIMIT 1').fetchone()
-    conn.close()
     return dict(account) if account else {'id': 1, 'balance': 0.0}
 
 def update_platform_balance(amount, transaction_type, description, order_id=None, withdrawal_id=None):
     """Update platform account balance and record transaction"""
     ensure_platform_tables()
-    conn = get_db_connection()
+    conn = get_db()
     
     # Get current balance
     account = conn.execute('SELECT * FROM platform_account LIMIT 1').fetchone()
     new_balance = account['balance'] + amount
     
     # Update balance
-    conn.execute('''
+    conn.execute(f'''
         UPDATE platform_account 
-        SET balance = ?, updated_at = datetime('now', 'localtime')
+        SET balance = ?, updated_at = {NOW_SQL}
         WHERE id = ?
     ''', (new_balance, account['id']))
     
     # Record transaction
-    conn.execute('''
+    conn.execute(f'''
         INSERT INTO platform_transactions 
         (type, amount, related_order_id, related_withdrawal_id, description, created_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        VALUES (?, ?, ?, ?, ?, {NOW_SQL})
     ''', (transaction_type, amount, order_id, withdrawal_id, description))
     
     conn.commit()
-    conn.close()
     return new_balance
-
 
 
 def process_order_payment_to_trainer(order_id):
     """Process payment to trainer when order is completed"""
-    conn = get_db_connection()
+    conn = get_db()
     
     # Get order details
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
     if not order:
-        conn.close()
         return False
     
     order = dict(order)
@@ -281,7 +228,6 @@ def process_order_payment_to_trainer(order_id):
     ).fetchone()
     
     if existing_transaction:
-        conn.close()
         return False  # Already processed
     
     # Calculate amounts
@@ -292,33 +238,31 @@ def process_order_payment_to_trainer(order_id):
     trainer_income = round(original_amount - commission, 2)
     
     # Get or create trainer account
-    trainer_id = order['seller_id']
     account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?', (trainer_id,)).fetchone()
     
     if not account:
-        conn.execute('''
+        conn.execute(f'''
             INSERT INTO trainer_accounts (user_id, balance, total_earned, created_at, updated_at)
-            VALUES (?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+            VALUES (?, ?, ?, {NOW_SQL}, {NOW_SQL})
         ''', (trainer_id, trainer_income, trainer_income))
     else:
         new_balance = account['balance'] + trainer_income
         new_total = account['total_earned'] + trainer_income
-        conn.execute('''
+        conn.execute(f'''
             UPDATE trainer_accounts
-            SET balance = ?, total_earned = ?, updated_at = datetime('now', 'localtime')
+            SET balance = ?, total_earned = ?, updated_at = {NOW_SQL}
             WHERE user_id = ?
         ''', (new_balance, new_total, trainer_id))
     
     # Record transaction
-    conn.execute('''
+    conn.execute(f'''
         INSERT INTO account_transactions 
         (user_id, order_id, amount, commission, original_amount, type, description, created_at)
-        VALUES (?, ?, ?, ?, ?, 'income', ?, datetime('now', 'localtime'))
+        VALUES (?, ?, ?, ?, ?, 'income', ?, {NOW_SQL})
     ''', (trainer_id, order_id, trainer_income, commission, original_amount, 
           f'訂單 #{order_id} 完成收入'))
     
     conn.commit()
-    conn.close()
     
     # Deduct trainer income from platform account (Recognize liability)
     update_platform_balance(
@@ -330,32 +274,22 @@ def process_order_payment_to_trainer(order_id):
     
     return True
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 @app.route('/api/payment_methods/<int:method_id>', methods=['DELETE'])
+@login_required(json=True)
 def delete_payment_method(method_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM saved_payment_methods WHERE id = ? AND user_id = ?', (method_id, session['user_id']))
     conn.commit()
-    conn.close()
     
     return {'success': True}
 
 @app.route('/api/bank_accounts/<int:account_id>', methods=['DELETE'])
+@login_required(json=True)
 def delete_bank_account(account_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM trainer_bank_accounts WHERE id = ? AND user_id = ?', (account_id, session['user_id']))
     conn.commit()
-    conn.close()
     
     return {'success': True}
 
@@ -367,9 +301,9 @@ def inject_sidebar_counts():
         role = session.get('user_role')
         
         try:
-            conn = get_db_connection()
+            conn = get_db()
             
-            if role == 'trainer':
+            if role == Role.TRAINER:
                 # Count Pending Orders (Wait for Accept)
                 pending_orders = conn.execute("SELECT COUNT(*) FROM orders WHERE seller_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
                 
@@ -383,18 +317,14 @@ def inject_sidebar_counts():
                 ongoing_orders = conn.execute("SELECT COUNT(*) FROM orders WHERE seller_id = ? AND status = 'in_progress'", (user_id,)).fetchone()[0]
                 counts['trainer_calendar_count'] = confirmed_orders + ongoing_orders
                 
-                # Order Management Badge: Pending only (as requested previously, or keep combined?)
-                # User asked to remove red dot from calendar for pending orders.
-                # User didn't explicitly say change Order Management badge, but implied pending orders notification belongs there.
+                # Order Management badge: orders still waiting on the trainer (pending + confirmed)
                 counts['trainer_badge_count'] = pending_orders + confirmed_orders
                 
-            if role == 'admin':
+            if role == Role.ADMIN:
                 # Count Pending Listings
                 pending_listings = conn.execute("SELECT COUNT(*) FROM listings WHERE status = 'pending'").fetchone()[0]
                 counts['admin_pending_listings'] = pending_listings
-                
 
-                
                 # Count Pending Trainer Applications
                 pending_trainers = conn.execute("SELECT COUNT(*) FROM trainer_applications WHERE status = 'pending'").fetchone()[0]
                 counts['admin_pending_trainers'] = pending_trainers
@@ -403,12 +333,8 @@ def inject_sidebar_counts():
                 pending_withdrawals = conn.execute("SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'pending'").fetchone()[0]
                 counts['admin_pending_withdrawals'] = pending_withdrawals
                 
-                # Count Pending Payment Confirmations (Paid by buyer but not confirmed by admin)
-                # Note: This logic catches "First Time Payments".
-                # For "Paid Supplements", they are technically payment_status='paid' and confirmed=0 too.
-                # But we might want them in "Refunds" badge if we are strict.
-                # However, for simplicity, let them duplicate or split.
-                # Actually, "Order Tracking" shows Unconfirmed. "Refunds" shows Unconfirmed Supplements.
+                # Paid by buyer but not yet confirmed by admin. Paid supplements also match this,
+                # so they are counted both here (Order Tracking) and in the Refunds badge below.
                 pending_payments = conn.execute("SELECT COUNT(*) FROM orders WHERE payment_status = 'paid' AND (payment_confirmed IS NULL OR payment_confirmed = 0)").fetchone()[0]
                 counts['admin_pending_payments'] = pending_payments
                 
@@ -420,9 +346,7 @@ def inject_sidebar_counts():
                 # 1. Refund Tasks
                 pending_refund_tasks = conn.execute("SELECT COUNT(*) FROM refund_tasks WHERE status = 'pending'").fetchone()[0]
                 
-                # 2. Underpaid Orders (Supplements Needed - maybe not urgent for admin? Admin just sees them)
-                # Actually Admin usually just waits. Red dot might be distracting if many underpaid?
-                # But User asked for "Pending Supplement" page logic.
+                # 2. Underpaid orders (buyer still owes a supplement)
                 pending_supplements_underpaid = conn.execute("SELECT COUNT(*) FROM orders WHERE paid_amount IS NOT NULL AND paid_amount > 0 AND paid_amount < total_price AND status NOT IN ('cancelled', 'rejected')").fetchone()[0]
                 
                 # 3. Paid Supplements (Need Confirmation)
@@ -446,7 +370,7 @@ def inject_sidebar_counts():
                 counts['admin_tab_supplement_count'] = pending_supplements_underpaid + paid_supplements_unconfirmed
                 counts['admin_pending_refunds'] = pending_refund_tasks + pending_supplements_underpaid + paid_supplements_unconfirmed
                 
-            if role == 'member':
+            if role == Role.MEMBER:
                 # Count all active orders for member (pending + confirmed + in_progress)
                 # This matches the total badges shown in the order tabs
                 pending_orders = conn.execute("SELECT COUNT(*) FROM orders WHERE buyer_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
@@ -457,15 +381,14 @@ def inject_sidebar_counts():
                 counts['member_upcoming_orders'] = confirmed_orders + in_progress_orders
                 counts['member_badge_count'] = pending_orders + confirmed_orders + in_progress_orders
 
-            conn.close()
-        except Exception as e:
-            print(f"Error injecting sidebar counts: {e}")
-            
+        except Exception:
+            app.logger.exception('Error injecting sidebar counts')
+
     return dict(sidebar_counts=counts)
 
 @app.route('/')
 def index():
-    conn = get_db_connection()
+    conn = get_db()
     query = request.args.get('q', '')
     category = request.args.get('category', '')
     
@@ -534,7 +457,6 @@ def index():
             LIMIT 6
         ''').fetchall()
         
-    conn.close()
     return render_template('index.html', listings=listings, query=query, top_rated=top_rated, category=category)
 
 @app.route('/booking/<int:listing_id>', methods=('GET', 'POST'))
@@ -543,7 +465,7 @@ def booking_create(listing_id):
         flash('請先登入以進行預約', 'warning')
         return redirect(url_for('login', next=request.url))
         
-    conn = get_db_connection()
+    conn = get_db()
     listing = conn.execute('''
         SELECT l.*, u.name as trainer_name 
         FROM listings l
@@ -552,19 +474,16 @@ def booking_create(listing_id):
     ''', (listing_id,)).fetchone()
     
     if not listing:
-        conn.close()
         flash('找不到該刊登', 'error')
         return redirect(url_for('index'))
         
     # Prevent booking own listing
     if listing['trainer_id'] == session['user_id']:
-        conn.close()
         flash('您無法預約自己的刊登', 'error')
         return redirect(url_for('listing_detail', listing_id=listing_id))
         
     # Parse available_slots to limit selection
     # Format: "Day1, Day2 HH:MM - HH:MM" e.g. "週一, 週三 09:00 - 18:00"
-    import re
     min_hour = 9
     max_hour = 22
     allowed_weekdays = [] # 0=Sun, 1=Mon...
@@ -585,20 +504,14 @@ def booking_create(listing_id):
     if request.method == 'POST':
         booking_date = request.form['booking_date']
         
-        # Validate Weekday in Backend
-        import datetime
+        # Validate weekday in backend; numbering matches JS getDay(): 0=Sun ... 6=Sat
         y, m, d = map(int, booking_date.split('-'))
-        weekday = datetime.date(y, m, d).isoweekday() % 7 # isoweekday: 1=Mon..7=Sun -> %7: 1..0 -> Map to 0=Sun, 1=Mon...? 
-        # Python datetime.weekday(): 0=Mon, 6=Sun. 
-        # JS getDay(): 0=Sun, 1=Mon.
-        # Let's align with JS: 0=Sun, 1=Mon, ..., 6=Sat
-        py_weekday = datetime.date(y, m, d).strftime("%w") # 0=Sun, 6=Sat
-        
+        py_weekday = date(y, m, d).strftime("%w")
+
         if int(py_weekday) not in allowed_weekdays:
              flash(f'該日期 ({booking_date}) 非開放預約日', 'error')
              return redirect(request.url)
-        
-        start_time = request.form['start_time'] # "HH:MM"
+
         start_time = request.form['start_time'] # "HH:MM"
         end_time = request.form['end_time']     # "HH:MM"
         location_type = request.form['location_type']
@@ -616,9 +529,9 @@ def booking_create(listing_id):
         total_price = listing['price'] * duration
         
         try:
-            conn.execute('''
+            conn.execute(f'''
                 INSERT INTO orders (listing_id, seller_id, buyer_id, booking_date, booking_time, duration, location_type, location_detail, price_at_booking, total_price, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now', 'localtime'), datetime('now', 'localtime'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', {NOW_SQL}, {NOW_SQL})
             ''', (listing_id, listing['trainer_id'], session['user_id'], booking_date, start_time, duration, location_type, location_detail, listing['price'], total_price))
             conn.commit()
             
@@ -627,17 +540,14 @@ def booking_create(listing_id):
             
         except Exception as e:
             flash(f'預約失敗: {str(e)}', 'error')
-            
-    conn.close()
-    
-    import datetime
-    today_date = datetime.date.today().strftime('%Y-%m-%d')
+
+    today_date = date.today().strftime('%Y-%m-%d')
     
     return render_template('booking_create.html', listing=listing, today_date=today_date, min_hour=min_hour, max_hour=max_hour, allowed_weekdays=allowed_weekdays)
 
 @app.route('/listing/<int:listing_id>')
 def listing_detail(listing_id):
-    conn = get_db_connection()
+    conn = get_db()
     
     # Join with users to get trainer info
     listing = conn.execute('''
@@ -648,7 +558,6 @@ def listing_detail(listing_id):
     ''', (listing_id,)).fetchone()
     
     if listing is None:
-        conn.close()
         flash('找不到該刊登', 'error')
         return redirect(url_for('index'))
 
@@ -657,24 +566,17 @@ def listing_detail(listing_id):
         user_id = session['user_id']
         is_blocked = conn.execute('SELECT 1 FROM blacklists WHERE trainer_id = ? AND consumer_id = ?', (listing['trainer_id'], user_id)).fetchone()
         if is_blocked:
-            conn.close()
             flash('您無法查看此訓練師的內容', 'error')
             return redirect(url_for('index'))
-    
-    if listing is None:
-        conn.close()
-        flash('找不到該刊登', 'error')
-        return redirect(url_for('index'))
-        
+
     # Access Control:
     # 1. Approved: Public
     # 2. Not Approved: Only Owner (Trainer) or Admin
     current_user_id = session.get('user_id')
     is_owner = current_user_id == listing['trainer_id']
-    is_admin = session.get('user_role') == 'admin'
+    is_admin = session.get('user_role') == Role.ADMIN
     
     if listing['status'] != 'approved' and not is_owner and not is_admin:
-        conn.close()
         flash('該刊登尚未上架', 'warning')
         return redirect(url_for('index'))
         
@@ -699,7 +601,6 @@ def listing_detail(listing_id):
         total_rating = sum(r['rating'] for r in reviews)
         average_rating = round(total_rating / len(reviews), 1)
     
-    conn.close()
     
     return render_template('listing_detail.html', listing=listing, images=image_list, reviews=reviews, average_rating=average_rating)
 
@@ -721,26 +622,23 @@ def register():
             flash('兩次輸入的密碼不一致', 'error')
             return redirect(url_for('register'))
 
-        conn = get_db_connection()
+        conn = get_db()
         user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
 
         if user:
             flash('該電子信箱已被註冊', 'error')
-            conn.close()
             return redirect(url_for('register'))
 
         password_hash = generate_password_hash(password)
         
         try:
-            conn.execute('INSERT INTO users (email, password_hash, name, nickname, gender, dob, city, district, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now", "localtime"))',
+            conn.execute(f'INSERT INTO users (email, password_hash, name, nickname, gender, dob, city, district, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, {NOW_SQL})',
                          (email, password_hash, name, nickname, gender, dob, city, district, phone))
             conn.commit()
             flash('註冊成功，請登入', 'success')
             return redirect(url_for('login'))
         except Exception as e:
             flash(f'註冊失敗: {str(e)}', 'error')
-        finally:
-            conn.close()
 
     return render_template('register.html')
 
@@ -750,9 +648,8 @@ def login():
         email = request.form['email']
         password = request.form['password']
 
-        conn = get_db_connection()
+        conn = get_db()
         user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
-        conn.close()
 
         if user is None:
             flash('帳號不存在', 'error')
@@ -775,10 +672,8 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/member/bank_account', methods=['POST'])
+@login_required
 def add_bank_account():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        
     bank_code = request.form.get('bank_code')
     branch_code = request.form.get('branch_code')
     account_number = request.form.get('account_number')
@@ -788,36 +683,30 @@ def add_bank_account():
         flash('請填寫完整銀行帳戶資訊', 'error')
         return redirect(url_for('member_profile'))
         
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('''
         INSERT INTO user_bank_accounts (user_id, bank_code, branch_code, account_number, account_name)
         VALUES (?, ?, ?, ?, ?)
     ''', (session['user_id'], bank_code, branch_code, account_number, account_name))
     conn.commit()
-    conn.close()
     
     flash('銀行帳戶已新增', 'success')
     return redirect(url_for('member_profile'))
 
 @app.route('/member/bank_account/<int:account_id>/delete', methods=['POST'])
+@login_required
 def delete_user_bank_account(account_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM user_bank_accounts WHERE id = ? AND user_id = ?', (account_id, session['user_id']))
     conn.commit()
-    conn.close()
     
     flash('銀行帳戶已刪除', 'success')
     return redirect(url_for('member_profile'))
 
 @app.route('/member/profile', methods=('GET', 'POST'))
+@login_required
 def member_profile():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     if request.method == 'POST':
         nickname = request.form['nickname']
@@ -827,8 +716,7 @@ def member_profile():
         
         avatar_file = request.files.get('avatar')
         delete_avatar = request.form.get('delete_avatar')
-        
-        conn = get_db_connection()
+
         try:
             # Handle Avatar Deletion
             if delete_avatar == 'true':
@@ -836,18 +724,10 @@ def member_profile():
             
             # Handle Avatar Upload
             if avatar_file and avatar_file.filename:
-                # Basic validation (add more if needed)
-                if '.' in avatar_file.filename and \
-                   avatar_file.filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}:
-                    
-                    filename = f"avatar_{session['user_id']}_{int(os.path.getmtime(os.getcwd()))}.{avatar_file.filename.rsplit('.', 1)[1].lower()}"
-                    # Use unique name to avoid caching issues
-                    import time
-                    filename = f"avatar_{session['user_id']}_{int(time.time())}.{avatar_file.filename.rsplit('.', 1)[1].lower()}"
-                    
-                    avatar_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    avatar_file.save(avatar_path)
-                    
+                if file_extension(avatar_file.filename) in {'png', 'jpg', 'jpeg', 'gif'}:
+                    # Unique name per upload, so browsers don't show a cached old avatar
+                    filename = save_upload(avatar_file, f"avatar_{session['user_id']}")
+
                     conn.execute('UPDATE users SET avatar = ? WHERE id = ?', (filename, session['user_id']))
 
             conn.execute('UPDATE users SET nickname = ?, phone = ?, city = ?, district = ? WHERE id = ?',
@@ -865,20 +745,16 @@ def member_profile():
     bank_accounts = conn.execute('SELECT * FROM user_bank_accounts WHERE user_id = ? ORDER BY created_at DESC', 
                                 (session['user_id'],)).fetchall()
     
-    conn.close()
     return render_template('member_profile.html', user=user, bank_accounts=[dict(b) for b in bank_accounts], active_page='profile')
 
 @app.route('/member/orders')
-@app.route('/member/orders')
+@login_required
 def member_orders():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     # Get filters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
         
-    conn = get_db_connection()
+    conn = get_db()
     orders_rows = conn.execute('''
         SELECT o.*, 
                u.name as trainer_name, u.nickname as trainer_nickname, u.avatar as trainer_avatar,
@@ -889,15 +765,9 @@ def member_orders():
         WHERE o.buyer_id = ?
         ORDER BY o.booking_date DESC, o.booking_time DESC
     ''', (session['user_id'],)).fetchall()
-    conn.close()
-    
-    import datetime
-    today = datetime.date.today().strftime('%Y-%m-%d')
-    
-    today = datetime.date.today().strftime('%Y-%m-%d')
-    
-    conn = get_db_connection() # Re-open connection for the loop
-    
+
+    today = date.today().strftime('%Y-%m-%d')
+
     # Base query wrapper function for filters
     def apply_date_filter(query, base_params):
         if start_date:
@@ -987,9 +857,7 @@ def member_orders():
             resch_count = conn.execute("SELECT COUNT(*) FROM reschedule_requests WHERE order_id = ? AND status = 'approved'", (o['id'],)).fetchone()[0]
             o['reschedule_count'] = resch_count
             
-            # Fetch Refund Amount if refunded (or pending refund task)
-            # We prioritize 'processed' tasks, but if pending, we might want to know too? 
-            # Requirement is "If refunded... add it".
+            # Latest refund task (pending or processed), if any
             refund_task = conn.execute('SELECT amount, status FROM refund_tasks WHERE order_id = ? ORDER BY created_at DESC LIMIT 1', (o['id'],)).fetchone()
             o['refund_amount'] = refund_task['amount'] if refund_task else 0
             o['refund_status'] = refund_task['status'] if refund_task else None
@@ -1004,20 +872,15 @@ def member_orders():
     pending_orders = process_order_list(pending_orders_rows)
     upcoming_orders = process_order_list(upcoming_orders_rows)
     history_orders = process_order_list(history_orders_rows)
-    
-    conn.close()
-    
+
     # Calculate monthly cancellation count for display
-    conn = get_db_connection()
-    import datetime
-    now = datetime.datetime.now()
+    now = datetime.now()
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     monthly_cancel_count = conn.execute('''
         SELECT COUNT(*) FROM orders 
         WHERE buyer_id = ? AND status = 'cancelled' AND updated_at >= ?
     ''', (session['user_id'], start_of_month)).fetchone()[0]
-    conn.close()
     
     return render_template('member_orders.html', 
                            active_page='orders',
@@ -1026,41 +889,10 @@ def member_orders():
                            history_orders=history_orders,
                            monthly_cancel_count=monthly_cancel_count)
 
-# ... (omitted code) ...
-
-    pending_orders = process_orders(pending_orders_rows)
-    all_history = process_orders(history_orders_rows)
-    
-    import datetime
-    today = datetime.date.today().strftime('%Y-%m-%d')
-    
-    accepted_orders = []
-    ongoing_orders = []
-    history_orders = []
-    
-    for o in all_history:
-        if o['status'] == 'confirmed':
-             accepted_orders.append(o)
-        elif o['status'] == 'in_progress':
-             ongoing_orders.append(o)
-        else:
-            # rejected, cancelled, completed
-            history_orders.append(o)
-    
-    return render_template('trainer_orders.html', 
-                           title='訂單管理', 
-                           active_page='trainer_orders',
-                           pending_orders=pending_orders,
-                           accepted_orders=accepted_orders,
-                           ongoing_orders=ongoing_orders,
-                           history_orders=history_orders)
-
 @app.route('/member/order/<int:order_id>/appeal', methods=('GET', 'POST'))
+@login_required
 def member_order_appeal(order_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     order = conn.execute('''
         SELECT o.*, 
                l.pet_name, l.pet_type,
@@ -1072,18 +904,13 @@ def member_order_appeal(order_id):
     ''', (order_id, session['user_id'])).fetchone()
     
     if not order:
-        conn.close()
         flash('訂單不存在', 'error')
         return redirect(url_for('member_orders'))
         
     # Check if appeal already exists
     existing_appeal = conn.execute('SELECT * FROM order_appeals WHERE order_id = ?', (order_id,)).fetchone()
     if existing_appeal:
-        conn.close()
-        # If exists, maybe show detail? For now, redirect with message
         flash('您已對此訂單提出過申訴', 'info')
-        # Ideally redirect to appeal detail or show in order detail.
-        # Let's just return to orders for now.
         return redirect(url_for('member_orders'))
 
     if request.method == 'POST':
@@ -1091,29 +918,23 @@ def member_order_appeal(order_id):
         description = request.form['description']
         
         try:
-            conn.execute('''
+            conn.execute(f'''
                 INSERT INTO order_appeals (order_id, user_id, reason, description, status, created_at)
-                VALUES (?, ?, ?, ?, 'pending', datetime('now', 'localtime'))
+                VALUES (?, ?, ?, ?, 'pending', {NOW_SQL})
             ''', (order_id, session['user_id'], reason, description))
             conn.commit()
-            
-            # Optionally update order status to 'dispute' or similar?
-            # keeping order status as is for now, but admin can see the flag.
-            
+            # Order status is left unchanged; admins see the appeal separately.
             flash('申訴已送出，客服將儘快為您處理', 'success')
             return redirect(url_for('member_orders'))
         except Exception as e:
             flash(f'提交失敗: {str(e)}', 'error')
             
-    conn.close()
     return render_template('member_order_appeal.html', order=order, active_page='orders')
 
 @app.route('/member/appeal/<int:appeal_id>', methods=('GET', 'POST'))
+@login_required
 def member_appeal_detail(appeal_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     # Fetch appeal with order and seller info
     appeal = conn.execute('''
@@ -1129,7 +950,6 @@ def member_appeal_detail(appeal_id):
     ''', (appeal_id, session['user_id'])).fetchone()
     
     if not appeal:
-        conn.close()
         flash('申訴案件不存在', 'error')
         return redirect(url_for('member_orders'))
     
@@ -1138,15 +958,14 @@ def member_appeal_detail(appeal_id):
         
         if message and appeal['status'] not in ['closed', 'resolved']:
             try:
-                conn.execute('''
+                conn.execute(f'''
                     INSERT INTO appeal_messages (appeal_id, sender_id, sender_role, message, created_at)
-                    VALUES (?, ?, 'user', ?, datetime('now', 'localtime'))
+                    VALUES (?, ?, 'user', ?, {NOW_SQL})
                 ''', (appeal_id, session['user_id'], message))
                 conn.commit()
                 flash('留言已送出', 'success')
             except Exception as e:
                 flash(f'送出失敗: {str(e)}', 'error')
-            conn.close()
             return redirect(url_for('member_appeal_detail', appeal_id=appeal_id))
         else:
             if not message:
@@ -1161,15 +980,12 @@ def member_appeal_detail(appeal_id):
         ORDER BY m.created_at ASC
     ''', (appeal_id,)).fetchall()
     
-    conn.close()
     return render_template('member_appeal_detail.html', appeal=appeal, messages=messages, active_page='orders')
 
 @app.route('/member/order/<int:order_id>/payment')
+@login_required
 def member_payment(order_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     order = conn.execute('''
         SELECT o.*, 
                u.name as trainer_name, u.nickname as trainer_nickname,
@@ -1179,7 +995,6 @@ def member_payment(order_id):
         JOIN users u ON o.seller_id = u.id
         WHERE o.id = ? AND o.buyer_id = ?
     ''', (order_id, session['user_id'])).fetchone()
-    conn.close()
     
     if not order:
         flash('訂單不存在', 'error')
@@ -1188,7 +1003,7 @@ def member_payment(order_id):
     order = dict(order)
     
     # Check if order is confirmed and unpaid
-    if order['status'] != 'confirmed':
+    if order['status'] != OrderStatus.CONFIRMED:
         flash('此訂單無法付款（狀態不正確）', 'error')
         return redirect(url_for('member_orders'))
     
@@ -1196,43 +1011,36 @@ def member_payment(order_id):
     paid_amount = order.get('paid_amount', 0) or 0
     remaining_amount = order['total_price'] - paid_amount
     
-    if remaining_amount <= 0 and order.get('payment_status') == 'paid':
+    if remaining_amount <= 0 and order.get('payment_status') == PaymentStatus.PAID:
         flash('此訂單已付款', 'info')
         return redirect(url_for('member_orders'))
         
     order['remaining_amount'] = remaining_amount
-    
+
     # Fetch saved payment methods
-    conn = get_db_connection()
     saved_methods = conn.execute('SELECT * FROM saved_payment_methods WHERE user_id = ? ORDER BY created_at DESC', (session['user_id'],)).fetchall()
-    conn.close()
     saved_methods = [dict(m) for m in saved_methods]
     
     return render_template('member_payment.html', order=order, active_page='orders', saved_methods=saved_methods)
 
 @app.route('/member/order/<int:order_id>/payment', methods=['POST'])
+@login_required
 def process_payment(order_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     order = conn.execute('SELECT * FROM orders WHERE id = ? AND buyer_id = ?', 
                         (order_id, session['user_id'])).fetchone()
     
     if not order:
-        conn.close()
         flash('訂單不存在', 'error')
         return redirect(url_for('member_orders'))
         
     order = dict(order)
     
-    if order['status'] != 'confirmed':
-        conn.close()
+    if order['status'] != OrderStatus.CONFIRMED:
         flash('此訂單無法付款（狀態不正確）', 'error')
         return redirect(url_for('member_orders'))
     
-    if order.get('payment_status') == 'paid':
-        conn.close()
+    if order.get('payment_status') == PaymentStatus.PAID:
         flash('此訂單已付款', 'info')
         return redirect(url_for('member_orders'))
     
@@ -1248,7 +1056,6 @@ def process_payment(order_id):
         method = conn.execute('SELECT * FROM saved_payment_methods WHERE id = ? AND user_id = ?', 
                              (saved_method_id, session['user_id'])).fetchone()
         if not method:
-            conn.close()
             flash('無效的付款方式', 'error')
             return redirect(url_for('member_payment', order_id=order_id))
         
@@ -1266,12 +1073,10 @@ def process_payment(order_id):
         
         # Basic validation
         if not all([card_number, expiry_month, expiry_year, cvv, cardholder_name]):
-            conn.close()
             flash('請填寫完整的付款資訊', 'error')
             return redirect(url_for('member_payment', order_id=order_id))
         
         if len(card_number) < 13 or len(card_number) > 16:
-            conn.close()
             flash('信用卡號碼格式不正確', 'error')
             return redirect(url_for('member_payment', order_id=order_id))
 
@@ -1284,33 +1089,26 @@ def process_payment(order_id):
             try:
                 masked_card = f"**** **** **** {card_last4}"
                 expiry = f"{expiry_month}/{expiry_year}"
-                import uuid
                 token = str(uuid.uuid4())
-                
-                conn.execute('''
+
+                conn.execute(f'''
                     INSERT INTO saved_payment_methods (user_id, card_number_masked, card_expiry, cardholder_name, payment_token, created_at)
-                    VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+                    VALUES (?, ?, ?, ?, ?, {NOW_SQL})
                 ''', (session['user_id'], masked_card, expiry, cardholder_name, token))
-            except Exception as e:
-                print(f"Failed to save card: {e}")
+            except Exception:
+                app.logger.exception('Failed to save card')
 
     if payment_success:
-        import time
-        import datetime
         time.sleep(1) # Simulate delay
-        
-        # Get listing's cancellation hours logic (simplified reuse or re-fetch if needed)
-        # We can re-use existing logic logic or simplify since we are in `confirmed` status
-        
-        payment_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Update order status
+
+        payment_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         # Calculate amount paid (difference if supplement)
         current_paid = order.get('paid_amount') or 0
         payment_amount = order['total_price'] - current_paid
         
         # Update order status
-        conn.execute('''
+        conn.execute(f'''
             UPDATE orders 
             SET payment_status = 'paid',
                 payment_method = 'credit_card',
@@ -1318,103 +1116,79 @@ def process_payment(order_id):
                 card_last4 = ?,
                 payment_confirmed = 0,
                 paid_amount = total_price,
-                updated_at = datetime('now', 'localtime')
+                updated_at = {NOW_SQL}
             WHERE id = ?
         ''', (payment_time, card_last4, order_id))
         
         # Record transaction (User Ledger - Payment Out)
-        conn.execute('''
+        conn.execute(f'''
             INSERT INTO account_transactions (user_id, amount, transaction_type, status, description, created_at)
-            VALUES (?, ?, 'payment', 'completed', ?, datetime('now', 'localtime'))
+            VALUES (?, ?, 'payment', 'completed', ?, {NOW_SQL})
         ''', (session['user_id'], -payment_amount, f"支付訂單 #{order_id}"))
         
         conn.commit()
-        conn.close()
-        
-        # Update Platform Balance REMOVED - Wait for Admin Confirmation
-        # Use helper function (separate transaction)
-        # desc = f"訂單 #{order_id} 款項"
-        # if current_paid > 0:
-        #     desc += " (補款)"
-        # print(f"DEBUG: Processing Payment - Amount: {payment_amount}, Desc: {desc}, Order: {order_id}")
-        # update_platform_balance(payment_amount, 'payment', desc, order_id=order_id)
-        
+        # The platform balance is credited later, when an admin confirms the payment.
+
         flash('付款成功！等待管理員確認。', 'success')
         return redirect(url_for('member_orders'))
     
-    conn.close()
     flash('付款失敗，請重試', 'error')
     return redirect(url_for('member_payment', order_id=order_id))
         
 @app.route('/member/apply-trainer', methods=('GET', 'POST'))
+@login_required
 def member_apply_trainer():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        
     if request.method == 'POST':
         experience = request.form['experience']
         file = request.files['certificate']
         
         if file:
-            filename = f"user_{session['user_id']}_{file.filename}"
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            
-            conn = get_db_connection()
-            conn.execute('INSERT INTO trainer_applications (user_id, experience_years, certificate_filename, created_at) VALUES (?, ?, ?, datetime("now", "localtime"))',
+            filename = save_upload(file, f"user_{session['user_id']}")
+
+            conn = get_db()
+            conn.execute(f'INSERT INTO trainer_applications (user_id, experience_years, certificate_filename, created_at) VALUES (?, ?, ?, {NOW_SQL})',
                          (session['user_id'], experience, filename))
             conn.commit()
-            conn.close()
             
             flash('申請已送出，請等待審核', 'success')
             return redirect(url_for('member_apply_trainer'))
-            
+
     # Fetch latest application status
-    conn = get_db_connection()
+    conn = get_db()
     existing_app = conn.execute('SELECT * FROM trainer_applications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', (session['user_id'],)).fetchone()
-    conn.close()
             
     return render_template('member_apply_trainer.html', active_page='apply_trainer', application=existing_app)
 
 @app.route('/admin/listing-review')
+@role_required(Role.ADMIN)
 def admin_listing_review():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     listings = conn.execute('''
         SELECT l.*, u.name as trainer_name, u.email as trainer_email 
         FROM listings l
         JOIN users u ON l.trainer_id = u.id
         WHERE l.status = 'pending'
     ''').fetchall()
-    conn.close()
     
     return render_template('admin_listing_review_list.html', listings=listings, active_page='listing_review', title='刊登申請審核')
 
 @app.route('/admin/listing-modification-review')
+@role_required(Role.ADMIN)
 def admin_listing_modification_review():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
-    # Currently we don't have a separate modification status, so we pass empty list or pending?
-    # For now, let's pass empty list to show the page structure.
+    conn = get_db()
     listings = conn.execute('''
         SELECT l.*, u.name as trainer_name, u.email as trainer_email 
         FROM listings l
         JOIN users u ON l.trainer_id = u.id
         WHERE l.status = 'modification_pending'
     ''').fetchall()
-    conn.close()
     
     return render_template('admin_listing_review_list.html', listings=listings, active_page='listing_modification_review', title='刊登修改審核', is_modification=True)
 
 @app.route('/admin/listing-review/<int:listing_id>')
+@role_required(Role.ADMIN)
 def admin_listing_review_detail(listing_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     listing = conn.execute('''
         SELECT l.*, u.name as trainer_name, u.nickname as trainer_nickname, u.email as trainer_email, u.phone as trainer_phone
         FROM listings l
@@ -1429,9 +1203,7 @@ def admin_listing_review_detail(listing_id):
         additional_images = [img['filename'] for img in images]
     else:
         additional_images = []
-        
-    conn.close()
-    
+
     if listing is None:
         flash('找不到該刊登', 'error')
         return redirect(url_for('admin_listing_review'))
@@ -1439,37 +1211,29 @@ def admin_listing_review_detail(listing_id):
     return render_template('admin_listing_review_detail.html', listing=listing, images=additional_images, active_page='listing_review')
 
 @app.route('/admin/listing-review/<int:listing_id>/approve', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_listing_approve(listing_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute("UPDATE listings SET status = 'approved' WHERE id = ?", (listing_id,))
     conn.commit()
-    conn.close()
     
     flash('刊登已核准', 'success')
     return redirect(url_for('admin_listing_review'))
 
 @app.route('/admin/listing-review/<int:listing_id>/reject', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_listing_reject(listing_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute("UPDATE listings SET status = 'rejected' WHERE id = ?", (listing_id,))
     conn.commit()
-    conn.close()
     
     flash('刊登已駁回', 'info')
     return redirect(url_for('admin_listing_review'))
 
 @app.route('/admin/order-tracking')
+@role_required(Role.ADMIN)
 def admin_order_tracking():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     orders = conn.execute('''
         SELECT o.*,
                buyer.name as buyer_name, buyer.email as buyer_email, buyer.phone as buyer_phone,
@@ -1494,26 +1258,25 @@ def admin_order_tracking():
         
         # Translate status
         status_map = {
-            'pending': '待接受',
-            'confirmed': '已確認',
-            'in_progress': '進行中',
-            'completed': '已完成',
-            'rejected': '已拒絕',
-            'cancelled': '已取消'
+            OrderStatus.PENDING: '待接受',
+            OrderStatus.CONFIRMED: '已確認',
+            OrderStatus.IN_PROGRESS: '進行中',
+            OrderStatus.COMPLETED: '已完成',
+            OrderStatus.REJECTED: '已拒絕',
+            OrderStatus.CANCELLED: '已取消'
         }
         order['status_text'] = status_map.get(order['status'], order['status'])
         
         # Translate payment_status
         payment_map = {
-            'unpaid': '未付款',
-            'paid': '已付款',
-            'refunded': '已退款'
+            PaymentStatus.UNPAID: '未付款',
+            PaymentStatus.PAID: '已付款',
+            PaymentStatus.REFUNDED: '已退款'
         }
-        order['payment_status_text'] = payment_map.get(order.get('payment_status', 'unpaid'), '未付款')
+        order['payment_status_text'] = payment_map.get(order.get('payment_status', PaymentStatus.UNPAID), '未付款')
         
         orders_list.append(order)
     
-    conn.close()
     
     return render_template('admin_order_tracking.html', 
                           title='查看訂單流程進度', 
@@ -1521,34 +1284,29 @@ def admin_order_tracking():
                           orders=orders_list)
 
 @app.route('/admin/order/<int:order_id>/confirm-payment', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_confirm_payment(order_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     # Check if order exists and payment is made
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
     
     if not order:
-        conn.close()
         flash('訂單不存在', 'error')
         return redirect(url_for('admin_order_tracking'))
     
     order = dict(order)
     
-    if order.get('payment_status') != 'paid':
-        conn.close()
+    if order.get('payment_status') != PaymentStatus.PAID:
         flash('此訂單尚未付款', 'error')
         return redirect(url_for('admin_order_tracking'))
     
     if order.get('payment_confirmed') == 1:
-        conn.close()
         flash('此訂單已確認收款', 'info')
         return redirect(url_for('admin_order_tracking'))
     
     # Update payment confirmation
-    confirm_time = get_current_time().strftime('%Y-%m-%d %H:%M:%S')
+    confirm_time = now_utc8().strftime('%Y-%m-%d %H:%M:%S')
     conn.execute('''
         UPDATE orders 
         SET payment_confirmed = 1,
@@ -1556,12 +1314,10 @@ def admin_confirm_payment(order_id):
         WHERE id = ?
     ''', (confirm_time, order_id))
     conn.commit()
-    conn.close()
     
     # Calculate Unconfirmed Amount (Total Price - Already Recorded Income)
     # This ensures we handle supplements correctly and avoid double counting
-    conn = get_db_connection() # ensure connection
-    
+
     # Sum up all 'income' transactions for this order
     existing_income_row = conn.execute('''
         SELECT SUM(amount) as total 
@@ -1573,7 +1329,7 @@ def admin_confirm_payment(order_id):
     amount_to_add = order['total_price'] - existing_income
     
     if amount_to_add > 0:
-        print(f"DEBUG: Admin Confirm Payment - Adding Amount: {amount_to_add}, Order: {order_id}")
+        app.logger.info('Admin confirmed payment: adding %s for order %s', amount_to_add, order_id)
         update_platform_balance(
             amount=amount_to_add,
             transaction_type='income',
@@ -1589,40 +1345,33 @@ def admin_confirm_payment(order_id):
 
 
 @app.route('/admin/complaints')
+@role_required(Role.ADMIN)
 def admin_complaints():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
     return render_template('admin_generic.html', title='申訴查詢', active_page='complaints')
 
 @app.route('/admin/trainer-review')
+@role_required(Role.ADMIN)
 def admin_trainer_review():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     applications = conn.execute('''
         SELECT ta.*, u.name, u.email 
         FROM trainer_applications ta 
         JOIN users u ON ta.user_id = u.id 
         WHERE ta.status = 'pending'
     ''').fetchall()
-    conn.close()
     
     return render_template('admin_trainer_review_list.html', applications=applications, active_page='trainer_review')
 
 @app.route('/admin/trainer-review/<int:app_id>')
+@role_required(Role.ADMIN)
 def admin_trainer_review_detail(app_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     application = conn.execute('''
         SELECT ta.*, u.name, u.email, u.nickname, u.gender, u.dob, u.city, u.district, u.phone
         FROM trainer_applications ta 
         JOIN users u ON ta.user_id = u.id 
         WHERE ta.id = ?
     ''', (app_id,)).fetchone()
-    conn.close()
     
     if application is None:
         flash('找不到該申請', 'error')
@@ -1631,11 +1380,9 @@ def admin_trainer_review_detail(app_id):
     return render_template('admin_trainer_review_detail.html', app=application, active_page='trainer_review')
 
 @app.route('/admin/trainer-review/<int:app_id>/approve', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_approve_application(app_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     # Get application to find user_id
     app_row = conn.execute('SELECT user_id FROM trainer_applications WHERE id = ?', (app_id,)).fetchone()
     
@@ -1650,33 +1397,26 @@ def admin_approve_application(app_id):
     else:
         flash('找不到該申請', 'error')
         
-    conn.close()
     return redirect(url_for('admin_trainer_review'))
 
 @app.route('/admin/trainer-review/<int:app_id>/reject', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_reject_application(app_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute("UPDATE trainer_applications SET status = 'rejected' WHERE id = ?", (app_id,))
     conn.commit()
-    conn.close()
     
     flash('已駁回申請', 'info')
     return redirect(url_for('admin_trainer_review'))
 
-# Admin Refund Management
 # Admin Financial Management (Refunds & Supplements)
 @app.route('/admin/refunds')
+@role_required(Role.ADMIN)
 def admin_refunds():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
     trip_date = request.args.get('trip_date')
     status = request.args.get('status', 'supplement')  # Default to 'supplement'
     
-    conn = get_db_connection()
+    conn = get_db()
     
     tasks = []
     
@@ -1718,8 +1458,6 @@ def admin_refunds():
         rows = conn.execute(query, params).fetchall()
         for row in rows:
             item = dict(row)
-            item['type'] = 'supplement'
-            item['diff_amount'] = item['total_price'] - (item['paid_amount'] or 0)
             item['type'] = 'supplement'
             item['diff_amount'] = item['total_price'] - (item['paid_amount'] or 0)
             tasks.append(item)
@@ -1793,52 +1531,46 @@ def admin_refunds():
             
             tasks.append(task)
         
-    conn.close()
     
     return render_template('admin_refunds.html', tasks=tasks, active_page='refunds', trip_date=trip_date, status=status)
 
 @app.route('/admin/refunds/<int:task_id>/process', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_process_refund(task_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     
     # Fetch task details for balance update
     task = conn.execute('SELECT * FROM refund_tasks WHERE id = ?', (task_id,)).fetchone()
     if not task:
-        conn.close()
         flash('找不到該退款任務', 'error')
         return redirect(url_for('admin_refunds'))
         
     try:
         # Mark task as processed
-        conn.execute('''
+        conn.execute(f'''
             UPDATE refund_tasks 
-            SET status = 'processed', processed_by = ?, processed_at = datetime('now', 'localtime')
+            SET status = 'processed', processed_by = ?, processed_at = {NOW_SQL}
             WHERE id = ?
         ''', (session['user_id'], task_id))
         
         # Mark order as refunded (Sync status) AND Reduce paid_amount
         # This is crucial for correct supplement calculation later: paid_amount should reflect NET payment.
-        conn.execute('''
+        conn.execute(f'''
             UPDATE orders 
             SET payment_status = 'refunded', 
                 paid_amount = MAX(0, IFNULL(paid_amount, 0) - ?),
-                updated_at = datetime('now', 'localtime') 
+                updated_at = {NOW_SQL} 
             WHERE id = ?
         ''', (task['amount'], task['order_id']))
         
         conn.commit()
-        conn.close() # Close transaction first
         
         # Update Platform Balance (Refund Expense)
-        print(f"DEBUG: UI Admin Refund - Amount: {-task['amount']}, Order: {task['order_id']}")
+        app.logger.info('Admin refund (UI): %s for order %s', -task['amount'], task['order_id'])
         update_platform_balance(-task['amount'], 'refund', f'訂單 #{task["order_id"]} 退款', order_id=task['order_id'])
-        
+
         flash('退款任務已標記為完成，並已從平台餘額扣除款項', 'success')
     except Exception as e:
-        if conn: conn.close()
         flash(f'處理失敗: {str(e)}', 'error')
         
     return redirect(url_for('admin_refunds'))
@@ -1851,10 +1583,8 @@ def uploaded_file(filename):
 
 
 @app.route('/trainer/create-listing', methods=('GET', 'POST'))
+@role_required(Role.TRAINER)
 def trainer_create_listing():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
     if request.method == 'POST':
         pet_type = request.form['pet_type']
         breed = request.form['breed']
@@ -1877,7 +1607,7 @@ def trainer_create_listing():
              files = request.files.getlist('pet_image')
         
         if files and files[0].filename != '':
-            conn = get_db_connection()
+            conn = get_db()
             cursor = conn.cursor()
             
             saved_filenames = []
@@ -1885,10 +1615,9 @@ def trainer_create_listing():
             
             for i, file in enumerate(files):
                 if file.filename:
-                     filename = f"listing_{session['user_id']}_{pet_type}_{i}_{file.filename}"
-                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                     filename = save_upload(file, f"listing_{session['user_id']}_{pet_type}_{i}")
                      saved_filenames.append(filename)
-                     
+
                      if i == 0:
                          cover_image = filename
             
@@ -1909,20 +1638,18 @@ def trainer_create_listing():
             else:
                  flash('請至少上傳一張圖片', 'error')
                  
-            conn.close()
             return redirect(url_for('trainer_manage_listings'))
             
     return render_template('trainer_create_listing.html', title='刊登', active_page='create_listing')
 
 @app.route('/trainer/<int:trainer_id>/listings')
 def trainer_public_listings(trainer_id):
-    conn = get_db_connection()
+    conn = get_db()
     
     # Get trainer info
     trainer = conn.execute('SELECT name, nickname, avatar FROM users WHERE id = ?', (trainer_id,)).fetchone()
     
     if not trainer:
-        conn.close()
         flash('找不到該訓練師', 'error')
         return redirect(url_for('index'))
         
@@ -1933,19 +1660,15 @@ def trainer_public_listings(trainer_id):
         ORDER BY created_at DESC
     ''', (trainer_id,)).fetchall()
     
-    conn.close()
     
     page_title = f"{trainer['nickname']} 的所有刊登"
     return render_template('index.html', listings=listings, page_title=page_title)
 
 @app.route('/trainer/manage-listings')
+@role_required(Role.TRAINER)
 def trainer_manage_listings():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     listings = conn.execute('SELECT * FROM listings WHERE trainer_id = ? ORDER BY created_at DESC', (session['user_id'],)).fetchall()
-    conn.close()
     
     published = [l for l in listings if l['status'] == 'approved']
     unpublished = [l for l in listings if l['status'] == 'closed']
@@ -1963,11 +1686,9 @@ def trainer_manage_listings():
                            history_rejected=history_rejected)
 
 @app.route('/trainer/listing/<int:listing_id>/close', methods=['POST'])
+@role_required(Role.TRAINER)
 def trainer_close_listing(listing_id):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
     if listing and listing['status'] == 'approved':
@@ -1975,15 +1696,12 @@ def trainer_close_listing(listing_id):
         conn.commit()
         flash('刊登已下架', 'success')
     
-    conn.close()
     return redirect(url_for('trainer_manage_listings'))
 
 @app.route('/trainer/listing/<int:listing_id>/republish', methods=['POST'])
+@role_required(Role.TRAINER)
 def trainer_republish_listing(listing_id):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
     if listing and listing['status'] == 'closed':
@@ -1991,15 +1709,12 @@ def trainer_republish_listing(listing_id):
         conn.commit()
         flash('刊登已重新上架', 'success')
     
-    conn.close()
     return redirect(url_for('trainer_manage_listings'))
 
 @app.route('/trainer/listing/<int:listing_id>/cancel-modification', methods=['POST'])
+@role_required(Role.TRAINER)
 def trainer_cancel_modification(listing_id):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership and status
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
     
@@ -2012,15 +1727,12 @@ def trainer_cancel_modification(listing_id):
     else:
         flash('無法取消：找不到該申請或狀態不正確', 'error')
     
-    conn.close()
     return redirect(url_for('trainer_manage_listings'))
 
 @app.route('/trainer/listing/<int:listing_id>/delete', methods=['POST'])
+@role_required(Role.TRAINER)
 def trainer_delete_listing(listing_id):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
     
@@ -2034,15 +1746,12 @@ def trainer_delete_listing(listing_id):
     else:
         flash('無法刪除：刊登不存在或非下架狀態', 'error')
     
-    conn.close()
     return redirect(url_for('trainer_manage_listings'))
 
 @app.route('/trainer/listing/<int:listing_id>')
+@role_required(Role.TRAINER)
 def trainer_listing_detail(listing_id):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
     
@@ -2052,9 +1761,7 @@ def trainer_listing_detail(listing_id):
         additional_images = [img['filename'] for img in images]
     else:
         additional_images = []
-        
-    conn.close()
-    
+
     if listing is None:
         flash('找不到該刊登', 'error')
         return redirect(url_for('trainer_manage_listings'))
@@ -2062,22 +1769,17 @@ def trainer_listing_detail(listing_id):
     return render_template('trainer_listing_detail.html', listing=listing, images=additional_images, active_page='manage_listings')
 
 @app.route('/trainer/listing/<int:listing_id>/edit', methods=('GET', 'POST'))
+@role_required(Role.TRAINER)
 def trainer_listing_edit(listing_id):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     listing = conn.execute('SELECT * FROM listings WHERE id = ? AND trainer_id = ?', (listing_id, session['user_id'])).fetchone()
     
     if listing is None:
-        conn.close()
         flash('找不到該刊登', 'error')
         return redirect(url_for('trainer_manage_listings'))
 
-    # Allow editing approved listings, but they will be set to modification_pending
-    # if listing['status'] == 'approved':
-    #    ... (removed check)
-
+    # Any listing (including approved ones) can be edited; saving sends it back to review
+    # as modification_pending.
     if request.method == 'POST':
         price = request.form['price']
         cancellation_hours = request.form['cancellation_hours']
@@ -2097,12 +1799,9 @@ def trainer_listing_edit(listing_id):
         if files:
             for i, file in enumerate(files):
                  if file.filename:
-                     # Generate unique filename
-                     import uuid
-                     filename = f"listing_{session['user_id']}_{listing['pet_type']}_{uuid.uuid4().hex[:8]}_{file.filename}"
-                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                     filename = save_upload(file, f"listing_{session['user_id']}_{listing['pet_type']}")
                      saved_new_filenames.append(filename)
-                     
+
                      conn.execute('INSERT INTO listing_images (listing_id, filename) VALUES (?, ?)', (listing_id, filename))
         
         # Handle Deletions
@@ -2110,7 +1809,7 @@ def trainer_listing_edit(listing_id):
         if delete_filenames:
             for filename in delete_filenames:
                 conn.execute('DELETE FROM listing_images WHERE listing_id = ? AND filename = ?', (listing_id, filename))
-                # Optionally delete file from disk here
+                # Best effort: the DB row is what matters, a missing file is fine
                 try:
                     os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 except:
@@ -2130,11 +1829,8 @@ def trainer_listing_edit(listing_id):
         if first_image:
             new_cover = first_image['filename']
             conn.execute('UPDATE listings SET pet_image = ? WHERE id = ?', (new_cover, listing_id))
-        else:
-            pass 
-                
+
         conn.commit()
-        conn.close()
         
         flash('修改申請已送出，請等待管理員審核。', 'success')
         return redirect(url_for('trainer_manage_listings'))
@@ -2142,12 +1838,9 @@ def trainer_listing_edit(listing_id):
     # Fetch images for display
     images = conn.execute('SELECT filename FROM listing_images WHERE listing_id = ? ORDER BY id ASC', (listing_id,)).fetchall()
     image_list = [img['filename'] for img in images]
-    
-    conn.close()
-    
+
     # Parse available_slots for pre-filling form
     # Format: "週一, 週二 09:00 - 18:00"
-    import re
     slot_data = {
         'days': [],
         'start_time': '09:00',
@@ -2167,11 +1860,9 @@ def trainer_listing_edit(listing_id):
 
 
 @app.route('/trainer/calendar')
+@role_required(Role.TRAINER)
 def trainer_calendar():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     # Fetch confirmed, in_progress, and completed orders
     orders_rows = conn.execute('''
         SELECT o.*, 
@@ -2183,27 +1874,24 @@ def trainer_calendar():
         WHERE o.seller_id = ? AND o.status IN ('confirmed', 'in_progress', 'completed')
         ORDER BY o.booking_date ASC, o.booking_time ASC
     ''', (session['user_id'],)).fetchall()
-    conn.close()
     
     orders_list = []
     for row in orders_rows:
         o = dict(row)
         # Translation for JS
-        if o['status'] == 'confirmed':
+        if o['status'] == OrderStatus.CONFIRMED:
             o['status_text'] = '已接受'
-        elif o['status'] == 'in_progress':
+        elif o['status'] == OrderStatus.IN_PROGRESS:
             o['status_text'] = '進行中'
-        elif o['status'] == 'completed':
+        elif o['status'] == OrderStatus.COMPLETED:
             o['status_text'] = '已完成'
         else:
             o['status_text'] = o['status']
             
         orders_list.append(o)
-    
-    import json
-    import datetime
-    today = datetime.date.today()
-    
+
+    today = date.today()
+
     return render_template('trainer_calendar.html', 
                            title='行事曆', 
                            active_page='trainer_calendar',
@@ -2213,11 +1901,9 @@ def trainer_calendar():
 
 
 @app.route('/trainer/orders')
+@role_required(Role.TRAINER)
 def trainer_orders():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     # Fetch pending orders with details
     pending_orders_rows = conn.execute('''
         SELECT o.*, 
@@ -2242,12 +1928,10 @@ def trainer_orders():
         ORDER BY o.booking_date DESC, o.booking_time DESC
     ''', (session['user_id'],)).fetchall()
     
-    conn.close()
     
     # Helper to process order for display
     def process_orders(rows):
         processed = []
-        conn = get_db_connection()
         for row in rows:
             o = dict(row)
             
@@ -2278,33 +1962,24 @@ def trainer_orders():
                 o['reschedule_request'] = dict(reschedule)
                 
             processed.append(o)
-        conn.close()
         return processed
 
     pending_orders = process_orders(pending_orders_rows)
     all_history = process_orders(history_orders_rows)
-    
-    import datetime
-    today = datetime.date.today().strftime('%Y-%m-%d')
-    
+
     accepted_orders = []
     ongoing_orders = []
     history_orders = []
     
     for o in all_history:
-        if o['status'] == 'confirmed':
+        if o['status'] == OrderStatus.CONFIRMED:
              accepted_orders.append(o)
-        elif o['status'] == 'in_progress':
+        elif o['status'] == OrderStatus.IN_PROGRESS:
              ongoing_orders.append(o)
         else:
             # rejected, cancelled, completed
-            # rejected, cancelled, completed
             history_orders.append(o)
-    
-    print(f"DEBUG: Trainer History loaded {len(history_orders)} items.")
-    for h in history_orders:
-        print(f" - Order {h['id']}: Status={h['status']}, Payment={h.get('payment_status')}")
-    
+
     return render_template('trainer_orders.html', 
                            title='訂單管理', 
                            active_page='trainer_orders',
@@ -2314,20 +1989,17 @@ def trainer_orders():
                            history_orders=history_orders)
 
 @app.route('/trainer/order/<int:order_id>/<action>', methods=['POST'])
+@role_required(Role.TRAINER)
 def trainer_order_action(order_id, action):
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
     if action not in ['accept', 'reject', 'start', 'complete']:
         flash('無效的操作', 'error')
         return redirect(url_for('trainer_orders'))
         
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership
     order = conn.execute('SELECT * FROM orders WHERE id = ? AND seller_id = ?', (order_id, session['user_id'])).fetchone()
     
     if not order:
-        conn.close()
         flash('找不到該訂單或無權限', 'error')
         return redirect(url_for('trainer_orders'))
         
@@ -2385,7 +2057,6 @@ def trainer_order_action(order_id, action):
         
         # If there are conflicts and not force accept, show warning
         if conflicts and not force_accept:
-            conn.close()
             conflict_info = "、".join([f"訂單#{c['id']}（{c['time']}）" for c in conflicts])
             # Store conflict info in session for JavaScript confirmation dialog
             session['pending_accept_order_id'] = order_id
@@ -2393,34 +2064,32 @@ def trainer_order_action(order_id, action):
             flash(f'OVERLAP_WARNING::{order_id}::{conflict_info}', 'warning')
             return redirect(url_for('trainer_orders'))
         
-        new_status = 'confirmed'
+        new_status = OrderStatus.CONFIRMED
         msg = '訂單已確認接受！'
         if conflicts:
             msg += '（已略過時段重疊警告）'
     elif action == 'reject':
-        new_status = 'rejected'
+        new_status = OrderStatus.REJECTED
         msg = '訂單已拒絕'
         flash_type = 'info'
     elif action == 'start':
         # Check if payment is confirmed before allowing start
         order_dict = dict(order)
-        if order_dict.get('payment_status') == 'paid' and order_dict.get('payment_confirmed') != 1:
-            conn.close()
+        if order_dict.get('payment_status') == PaymentStatus.PAID and order_dict.get('payment_confirmed') != 1:
             flash('此訂單尚未確認收款，無法開始行程。請等待管理員確認收款。', 'error')
             return redirect(url_for('trainer_orders'))
-        new_status = 'in_progress'
+        new_status = OrderStatus.IN_PROGRESS
         msg = '行程已開始！'
     elif action == 'complete':
-        new_status = 'completed'
+        new_status = OrderStatus.COMPLETED
         msg = '行程已完成！'
     else:
         flash('無效的操作', 'error')
         return redirect(url_for('trainer_orders'))
     
     try:
-        conn.execute("UPDATE orders SET status = ?, updated_at = datetime('now', 'localtime') WHERE id = ?", (new_status, order_id))
+        conn.execute(f"UPDATE orders SET status = ?, updated_at = {NOW_SQL} WHERE id = ?", (new_status, order_id))
         conn.commit()
-        conn.close()
         
         # Process payment to trainer if order is completed
         if action == 'complete':
@@ -2430,14 +2099,12 @@ def trainer_order_action(order_id, action):
         
         flash(msg, flash_type)
     except Exception as e:
-        conn.close()
+        pass
     return redirect(url_for('trainer_orders'))
 
 @app.route('/api/order/<int:order_id>/reschedule', methods=['POST'])
+@login_required(json=True)
 def api_reschedule_order(order_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
     data = request.get_json()
     new_date = data.get('date')
     new_time = data.get('time')
@@ -2446,11 +2113,10 @@ def api_reschedule_order(order_id):
     if not all([new_date, new_time, new_duration]):
         return {'error': 'Missing fields'}, 400
         
-    conn = get_db_connection()
+    conn = get_db()
     order = conn.execute('SELECT * FROM orders WHERE id = ? AND buyer_id = ?', (order_id, session['user_id'])).fetchone()
     
     if not order:
-        conn.close()
         return {'error': 'Order not found'}, 404
         
     order = dict(order)
@@ -2458,7 +2124,6 @@ def api_reschedule_order(order_id):
     # Check limit
     resch_count = conn.execute("SELECT COUNT(*) FROM reschedule_requests WHERE order_id = ? AND status = 'approved'", (order_id,)).fetchone()[0]
     if resch_count >= 2:
-        conn.close()
         return {'error': '此訂單已達到改期次數上限 (2次)'}, 400
     
     # Calculate price diff
@@ -2489,41 +2154,35 @@ def api_reschedule_order(order_id):
             
         conn.commit()
         success = True
-    except Exception as e:
-        print(f"Reschedule error: {e}")
+    except Exception:
+        app.logger.exception('Reschedule error')
         success = False
-        
-    conn.close()
-    
+
     if success:
         return {'success': True}
     else:
         return {'error': 'Database error'}, 500
 
 @app.route('/api/order/<int:order_id>/reschedule/respond', methods=['POST'])
+@role_required(Role.TRAINER, json=True, status=401)
 def api_respond_reschedule(order_id):
-    if 'user_id' not in session or session.get('user_role') != 'trainer':
-        return {'error': 'Unauthorized'}, 401
-    
     data = request.get_json()
     action = data.get('action') # 'approve' or 'reject'
     
     if action not in ['approve', 'reject']:
         return {'error': 'Invalid action'}, 400
         
-    conn = get_db_connection()
+    conn = get_db()
     # Verify ownership
     order = conn.execute('SELECT * FROM orders WHERE id = ? AND seller_id = ?', (order_id, session['user_id'])).fetchone()
     
     if not order:
-        conn.close()
         return {'error': 'Order not found'}, 404
         
     # Get pending request
     request_row = conn.execute('SELECT * FROM reschedule_requests WHERE order_id = ? AND status = "pending"', (order_id,)).fetchone()
     
     if not request_row:
-        conn.close()
         return {'error': 'No pending request'}, 404
     
     try:
@@ -2538,9 +2197,9 @@ def api_respond_reschedule(order_id):
             new_duration = request_row['new_duration']
             price_diff = request_row['price_diff']
             
-            conn.execute('''
+            conn.execute(f'''
                 UPDATE orders 
-                SET booking_date = ?, booking_time = ?, duration = ?, total_price = total_price + ?, updated_at = datetime('now', 'localtime')
+                SET booking_date = ?, booking_time = ?, duration = ?, total_price = total_price + ?, updated_at = {NOW_SQL}
                 WHERE id = ?
             ''', (new_date, new_time, new_duration, price_diff, order_id))
             
@@ -2549,9 +2208,9 @@ def api_respond_reschedule(order_id):
             # Handle Price Diff (Refund if negative)
             if price_diff < 0:
                 refund_amount = abs(price_diff)
-                conn.execute('''
+                conn.execute(f'''
                     INSERT INTO refund_tasks (user_id, order_id, amount, reason, status, created_at)
-                    VALUES (?, ?, ?, '改期退款 (時數減少/變更)', 'pending', datetime('now', 'localtime'))
+                    VALUES (?, ?, ?, '改期退款 (時數減少/變更)', 'pending', {NOW_SQL})
                 ''', (order['buyer_id'], order_id, refund_amount))
             elif price_diff > 0:
                 # Require supplementary payment
@@ -2566,13 +2225,11 @@ def api_respond_reschedule(order_id):
         conn.commit()
         success = True
     except Exception as e:
-        print(f"Response error: {e}")
+        app.logger.exception('Reschedule response error')
         conn.rollback()
         success = False
         msg = f'操作失敗: {str(e)}'
-        
-    conn.close()
-    
+
     if success:
         return {'success': True, 'message': msg}
     else:
@@ -2580,21 +2237,16 @@ def api_respond_reschedule(order_id):
 
 # Bank Account APIs
 @app.route('/api/user/bank-accounts', methods=['GET'])
+@login_required(json=True)
 def get_user_bank_accounts():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
-    conn = get_db_connection()
+    conn = get_db()
     accounts = conn.execute('SELECT * FROM user_bank_accounts WHERE user_id = ? ORDER BY is_default DESC, created_at DESC', (session['user_id'],)).fetchall()
-    conn.close()
     
     return {'accounts': [dict(a) for a in accounts]}
 
 @app.route('/api/user/bank-accounts', methods=['POST'])
+@login_required(json=True)
 def add_user_bank_account():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-        
     data = request.get_json()
     bank_code = data.get('bank_code')
     account_number = data.get('account_number')
@@ -2604,7 +2256,7 @@ def add_user_bank_account():
     if not all([bank_code, account_number, account_name]):
         return {'error': 'Missing fields'}, 400
         
-    conn = get_db_connection()
+    conn = get_db()
     if is_default:
         conn.execute('UPDATE user_bank_accounts SET is_default = 0 WHERE user_id = ?', (session['user_id'],))
         
@@ -2613,29 +2265,23 @@ def add_user_bank_account():
         VALUES (?, ?, ?, ?, ?)
     ''', (session['user_id'], bank_code, account_number, account_name, is_default))
     conn.commit()
-    conn.close()
     
     return {'success': True}
 
 @app.route('/api/user/bank-accounts/<int:account_id>', methods=['DELETE'])
+@login_required(json=True)
 def api_delete_user_bank_account(account_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-        
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM user_bank_accounts WHERE id = ? AND user_id = ?', (account_id, session['user_id']))
     conn.commit()
-    conn.close()
     
     return {'success': True}
 
 # Order Cancellation API
 @app.route('/api/order/<int:order_id>/cancel', methods=['POST'])
+@login_required(json=True)
 def api_cancel_order(order_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-        
-    conn = get_db_connection()
+    conn = get_db()
     try:
         order_row = conn.execute('''
             SELECT o.*, l.cancellation_hours, l.price, l.id as listing_id
@@ -2649,10 +2295,9 @@ def api_cancel_order(order_id):
             
         order = dict(order_row)
             
-        if order['status'] not in ['pending', 'confirmed']:
+        if order['status'] not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
             return {'error': 'Cannot cancel order in current status'}, 400
             
-        # Check Monthly Cancellation Limit
         # Check Monthly Cancellation Limit
         now = datetime.now()
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -2677,16 +2322,13 @@ def api_cancel_order(order_id):
                   
              booking_dt = datetime.strptime(booking_dt_str, fmt)
         except Exception as e:
-            # Fallback for complex time range strings or other errors
-            # Only block if we can strictly determine it's past deadline, otherwise allow (safe fail) -> Or block?
-            # To be safe for consumers, if we can't parse, we might assume it is check-able manually or allow.
-            # But usually we want to block late cancels.
-            # Let's try to parse "14:00 - 16:00" style if happens
+            # Fallback for "14:00 - 16:00" style values; if that fails too, the deadline
+            # check is skipped (cancellation allowed) rather than blocking the consumer.
             try:
                 start_part = order['booking_time'].split('-')[0].strip()
                 booking_dt = datetime.strptime(f"{order['booking_date']} {start_part}", '%Y-%m-%d %H:%M')
             except:
-                print(f"Date parse error: {e}")
+                app.logger.warning('Date parse error: %s', e)
                 booking_dt = datetime.now() + timedelta(days=999) # Future
 
         deadline_hours = order['cancellation_hours'] if order['cancellation_hours'] is not None else 24
@@ -2698,7 +2340,7 @@ def api_cancel_order(order_id):
         # Handle Refund if Paid
         data = request.get_json() or {}
         
-        if order.get('payment_status') == 'paid':
+        if order.get('payment_status') == PaymentStatus.PAID:
             bank_account_id = data.get('bank_account_id')
             new_bank_details = data.get('bank_details')
             
@@ -2715,10 +2357,7 @@ def api_cancel_order(order_id):
                  return {'error': '退款資訊未提供'}, 400
                  
             # Update paid_amount
-            conn.execute('UPDATE orders SET paid_amount = IFNULL(paid_amount, 0) + ? WHERE id = ?', (order['total_price'], order_id)) # Fallback if logic is simple
-            # But wait, above logic sends order['total_price'] as amount?
-            # We should charge remaining_amount.
-            # Let's fix process_payment logic below first.
+            conn.execute('UPDATE orders SET paid_amount = IFNULL(paid_amount, 0) + ? WHERE id = ?', (order['total_price'], order_id))
 
             # Create Refund Task
             # Calculate amount if missing
@@ -2728,32 +2367,27 @@ def api_cancel_order(order_id):
                 duration = order['duration'] or 1
                 refund_amount = price * duration
             
-            conn.execute('''
+            conn.execute(f'''
                 INSERT INTO refund_tasks (user_id, order_id, amount, reason, status, created_at)
-                VALUES (?, ?, ?, ?, 'pending', datetime('now', 'localtime'))
+                VALUES (?, ?, ?, ?, 'pending', {NOW_SQL})
             ''', (session['user_id'], order_id, refund_amount, f"消費者取消: {refund_details}"))
             
         # Update Order
-        conn.execute("UPDATE orders SET status = 'cancelled', updated_at = datetime('now', 'localtime') WHERE id = ?", (order_id,))
+        conn.execute(f"UPDATE orders SET status = 'cancelled', updated_at = {NOW_SQL} WHERE id = ?", (order_id,))
         conn.commit()
         return {'success': True}
 
     except Exception as e:
         conn.rollback()
-        print(f"Cancel error: {e}")
+        app.logger.exception('Cancel error')
         return {'error': f'System Error: {str(e)}'}, 500
-    finally:
-        conn.close()
 
 # Admin Refund APIs
 @app.route('/api/admin/refund-task/<int:order_id>', methods=['GET'])
+@role_required(Role.ADMIN, json=True)
 def get_admin_refund_task(order_id):
-    if session.get('user_role') != 'admin':
-        return {'error': 'Unauthorized'}, 403
-        
-    conn = get_db_connection()
+    conn = get_db()
     task = conn.execute('SELECT * FROM refund_tasks WHERE order_id = ? ORDER BY created_at DESC LIMIT 1', (order_id,)).fetchone()
-    conn.close()
     
     if not task:
         return {'error': 'Refund task not found'}, 404
@@ -2761,73 +2395,55 @@ def get_admin_refund_task(order_id):
     return {'task': dict(task)}
 
 @app.route('/api/admin/refund-task/<int:task_id>/process', methods=['POST'])
+@role_required(Role.ADMIN, json=True)
 def process_admin_refund_task(task_id):
-    if session.get('user_role') != 'admin':
-        return {'error': 'Unauthorized'}, 403
-        
-    conn = get_db_connection()
+    conn = get_db()
     task = conn.execute('SELECT * FROM refund_tasks WHERE id = ?', (task_id,)).fetchone()
     if not task:
-        conn.close()
         return {'error': 'Task not found'}, 404
         
     try:
         # Mark task as processed
-        conn.execute('''
+        conn.execute(f'''
             UPDATE refund_tasks 
             SET status = 'processed', 
                 processed_by = ?, 
-                processed_at = datetime('now', 'localtime') 
+                processed_at = {NOW_SQL} 
             WHERE id = ?
         ''', (session['user_id'], task_id))
         
         # Mark order as refunded AND Reduce paid_amount
-        conn.execute('''
+        conn.execute(f'''
             UPDATE orders 
             SET payment_status = 'refunded', 
                 paid_amount = MAX(0, IFNULL(paid_amount, 0) - ?),
-                updated_at = datetime('now', 'localtime') 
+                updated_at = {NOW_SQL} 
             WHERE id = ?
         ''', (task['amount'], task['order_id']))
-        
-        # Record transaction (refund expense) & Update Balance
-        # conn.execute(...) -> REMOVED manual insert, use helper below
-        
+
         conn.commit()
-        conn.close() # Close transaction first
-        
-        # Update Platform Balance (New Transaction)
-        print(f"DEBUG: Processing Refund - Amount: {-task['amount']}, Order: {task['order_id']}")
+
+        # Update Platform Balance (refund expense)
+        app.logger.info('Admin refund (API): %s for order %s', -task['amount'], task['order_id'])
         update_platform_balance(-task['amount'], 'refund', f'訂單 #{task["order_id"]} 退款', order_id=task['order_id'])
-        
+
         return {'success': True}
     except Exception as e:
         conn.rollback()
-        conn.close()
         return {'error': str(e)}, 500
-    except Exception as e:
-        conn.rollback()
-        conn.close()
-        return {'error': str(e)}, 500
-        
-    return {'success': True}
 
 # Messaging API
 @app.route('/api/order/<int:order_id>/messages', methods=['GET'])
+@login_required(json=True)
 def get_order_messages(order_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
     user_id = session['user_id']
-    conn = get_db_connection()
+    conn = get_db()
     
     # Verify access
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
     if not order or (order['buyer_id'] != user_id and order['seller_id'] != user_id):
-        conn.close()
         return {'error': 'Forbidden'}, 403
     
-    # Mark messages as read where recipient is current user
     # Identify the pair
     buyer_id = order['buyer_id']
     seller_id = order['seller_id']
@@ -2859,64 +2475,50 @@ def get_order_messages(order_id):
         ORDER BY m.created_at ASC
     ''', (buyer_id, seller_id, seller_id, buyer_id)).fetchall()
     
-    conn.close()
     return {'messages': [dict(m) for m in messages], 'current_user_id': user_id}
 
 @app.route('/api/order/<int:order_id>/messages', methods=['POST'])
+@login_required(json=True)
 def send_order_message(order_id):
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-        
     data = request.get_json()
     message = data.get('message', '').strip()
     if not message:
         return {'error': 'Empty message'}, 400
         
-    conn = get_db_connection()
+    conn = get_db()
     # Verify participant
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
     if not order or (order['buyer_id'] != session['user_id'] and order['seller_id'] != session['user_id']):
-        conn.close()
         return {'error': 'Unauthorized'}, 403
         
     # Check Blacklist
     sender_id = session['user_id']
     recipient_id = order['seller_id'] if order['buyer_id'] == sender_id else order['buyer_id']
     
-    # Check if sender is blocked by recipient
-    # Trainer blocks Consumer. If sender is consumer (buyer), need to check if trainer (seller) blocked them.
-    # If sender is trainer, we assume they can speak (or maybe we shouldn't rely on that, but usually blocking is "prevent other from contacting me")
-    # Requirement: "consumer... cannot contact".
-    
+    # Blacklists are trainer -> consumer: a blocked consumer can't message that trainer,
+    # while the trainer can still message the consumer.
     if order['buyer_id'] == sender_id: # Sender is consumer
         is_blocked = conn.execute('SELECT 1 FROM blacklists WHERE trainer_id = ? AND consumer_id = ?', (order['seller_id'], sender_id)).fetchone()
         if is_blocked:
-            conn.close()
             return {'error': '您已被此訓練師封鎖，無法傳送訊息。'}, 403
         
-    conn.execute('INSERT INTO order_messages (order_id, sender_id, message, created_at) VALUES (?, ?, ?, datetime("now", "localtime"))',
+    conn.execute(f'INSERT INTO order_messages (order_id, sender_id, message, created_at) VALUES (?, ?, ?, {NOW_SQL})',
                  (order_id, session['user_id'], message))
     conn.commit()
-    conn.close()
     
     return {'success': True}
 
 @app.route('/api/chat/context')
+@login_required(json=True)
 def get_chat_context():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
     target_user_id = request.args.get('user_id')
     if not target_user_id:
         return {'error': 'Missing user_id'}, 400
         
     current_user_id = session['user_id']
-    conn = get_db_connection()
+    conn = get_db()
     
-    # Find the most relevant order to use as chat context
-    # Prioritize orders with messages, then latest created
-    # Exclude inquiry orders *unless* there are messages on them (then they are valid contexts)
-    # Actually, we can just fetch the latest one.
+    # Most relevant order between the two users: latest message first, then latest created
     query = '''
         SELECT 
             o.id as order_id,
@@ -2931,29 +2533,23 @@ def get_chat_context():
     row = conn.execute(query, (current_user_id, target_user_id, target_user_id, current_user_id)).fetchone()
     
     if row:
-        conn.close()
         return {'order_id': row['order_id']}
     
     # If no existing order, create a new inquiry order IF listing_id is provided
     listing_id = request.args.get('listing_id')
     
     if not listing_id:
-        conn.close()
         return {'order_id': None}
         
     # Get listing info to verify and calculate price (though price might be 0 for inquiry)
     listing = conn.execute('SELECT * FROM listings WHERE id = ?', (listing_id,)).fetchone()
     if not listing:
-        conn.close()
         return {'error': 'Listing not found'}, 404
 
-    # Create inquiry order
-    # Using 'inquiry' status. booking_date/time are required NOT NULL, so use dummy values.
-    # Dummy values: today, 00:00
+    # Create an 'inquiry' order. booking_date/time are NOT NULL, so use dummy values (today, 00:00).
     today_str = datetime.now().strftime('%Y-%m-%d')
     dummy_time = '00:00'
-    
-    # We'll set the status to 'inquiry'
+
     try:
         cur = conn.execute('''
             INSERT INTO orders 
@@ -2962,11 +2558,9 @@ def get_chat_context():
         ''', (listing_id, current_user_id, target_user_id, today_str, dummy_time, listing['price']))
         new_order_id = cur.lastrowid
         conn.commit()
-        conn.close()
         return {'order_id': new_order_id}
-    except Exception as e:
-        conn.close()
-        print(f"Error creating inquiry order: {e}")
+    except Exception:
+        app.logger.exception('Error creating inquiry order')
         return {'error': 'Failed to create inquiry context'}, 500
 
 @app.route('/api/chat/unread_count')
@@ -2975,7 +2569,7 @@ def get_global_unread_count():
         return {'count': 0}
     
     user_id = session['user_id']
-    conn = get_db_connection()
+    conn = get_db()
     
     # Count unread messages where current user is the recipient (buyer or seller)
     # Message sender != current user
@@ -2990,18 +2584,14 @@ def get_global_unread_count():
     '''
     
     count = conn.execute(query, (user_id, user_id, user_id)).fetchone()[0]
-    conn.close()
     
     return {'count': count}
 
-# Update get_chat_contacts to include unread count
 @app.route('/api/chat/contacts')
+@login_required(json=True)
 def get_chat_contacts():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
     user_id = session['user_id']
-    conn = get_db_connection()
+    conn = get_db()
     
     # Use CTE to find the distinct contacts and aggregate their stats across ALL shared orders
     query = '''
@@ -3067,22 +2657,19 @@ def get_chat_contacts():
     try:
         contacts_rows = conn.execute(query, params).fetchall()
         contacts = [dict(row) for row in contacts_rows]
-    except Exception as e:
-        print(f"Error fetching contacts: {e}")
+    except Exception:
+        app.logger.exception('Error fetching contacts')
         contacts = []
     
-    conn.close()
     return {'contacts': contacts}
 
 @app.route('/admin/member-management')
+@role_required(Role.ADMIN)
 def admin_member_management():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
     query = request.args.get('q', '').strip()
     role_filter = request.args.get('role', 'all')
     
-    conn = get_db_connection()
+    conn = get_db()
     
     sql = 'SELECT * FROM users WHERE 1=1'
     params = []
@@ -3100,7 +2687,6 @@ def admin_member_management():
     
     users = conn.execute(sql, params).fetchall()
     
-    conn.close()
     
     return render_template('admin_member_list.html', 
                            users=users, 
@@ -3109,11 +2695,9 @@ def admin_member_management():
                            active_page='member_management')
     
 @app.route('/admin/statistics')
+@role_required(Role.ADMIN)
 def admin_statistics_dashboard():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     # Date Filter
     start_date = request.args.get('start_date')
@@ -3280,7 +2864,6 @@ def admin_statistics_dashboard():
     rank_rejected = sorted(all_trainers, key=lambda x: x['rejected_count'], reverse=True)[:10]
     rank_appealed = sorted(all_trainers, key=lambda x: x['appeal_count'], reverse=True)[:10]
     
-    conn.close()
     
     return render_template('admin_statistics_dashboard.html', 
                            start_date=start_date, end_date=end_date,
@@ -3306,37 +2889,30 @@ def admin_statistics_dashboard():
                            active_page='statistics')
 
 @app.route('/admin/member-management/<int:user_id>')
+@role_required(Role.ADMIN)
 def admin_member_detail(user_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-    # Connection closed later
-    
+
     if user is None:
         flash('找不到該會員', 'error')
         return redirect(url_for('admin_member_management'))
     
     # Fetch level history if user is a trainer
     level_history = []
-    if user['role'] == 'trainer':
+    if user['role'] == Role.TRAINER:
         level_history = conn.execute('''
             SELECT * FROM trainer_level_history 
             WHERE trainer_id = ? 
             ORDER BY created_at DESC
         ''', (user_id,)).fetchall()
-        
-    conn.close() # Close connection after all queries
-        
+
     return render_template('admin_member_detail.html', user=user, level_history=level_history, active_page='member_management')
 
 @app.route('/admin/member-management/<int:user_id>/edit', methods=('GET', 'POST'))
+@role_required(Role.ADMIN)
 def admin_member_edit(user_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     if request.method == 'POST':
         email = request.form['email']
         name = request.form['name']
@@ -3361,12 +2937,9 @@ def admin_member_edit(user_id):
              flash('Email 已被使用', 'error')
         except Exception as e:
             flash(f'更新失敗: {e}', 'error')
-        finally:
-            conn.close()
-            
+
     # GET request
     user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-    conn.close()
     
     if user is None:
         return redirect(url_for('admin_member_management'))
@@ -3374,31 +2947,24 @@ def admin_member_edit(user_id):
     return render_template('admin_member_edit.html', user=user, active_page='member_management')
 
 @app.route('/admin/member-management/<int:user_id>/delete', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_member_delete(user_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     try:
-        # Delete related records first (optional, but good practice. For now just users table or let cascade handle if set, but sqlite needs pragma. 
-        # We should delete trainer application if exists)
+        # SQLite foreign keys are not enforced here, so dependent rows are deleted by hand.
         conn.execute('DELETE FROM trainer_applications WHERE user_id = ?', (user_id,))
         conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
         conn.commit()
         flash('會員已刪除', 'success')
     except Exception as e:
         flash(f'刪除失敗: {e}', 'error')
-    finally:
-        conn.close()
-        
+
     return redirect(url_for('admin_member_management'))
 
 @app.route('/admin/appeals')
+@role_required(Role.ADMIN)
 def admin_appeals():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     appeals = conn.execute('''
         SELECT a.*, o.booking_date, o.booking_time, u.name as user_name, u.email as user_email
         FROM order_appeals a
@@ -3406,16 +2972,13 @@ def admin_appeals():
         JOIN users u ON a.user_id = u.id
         ORDER BY a.created_at DESC
     ''').fetchall()
-    conn.close()
     
     return render_template('admin_appeals_list.html', appeals=appeals, active_page='appeals', title='申訴案件管理')
 
 @app.route('/admin/appeal/<int:appeal_id>', methods=('GET', 'POST'))
+@role_required(Role.ADMIN)
 def admin_appeal_detail(appeal_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     
     if request.method == 'POST':
         action = request.form.get('action')
@@ -3424,13 +2987,12 @@ def admin_appeal_detail(appeal_id):
         # Handle message sending (reply_only)
         if action == 'reply_only':
             if message:
-                conn.execute('''
+                conn.execute(f'''
                     INSERT INTO appeal_messages (appeal_id, sender_id, sender_role, message, created_at)
-                    VALUES (?, ?, 'admin', ?, datetime('now', 'localtime'))
+                    VALUES (?, ?, 'admin', ?, {NOW_SQL})
                 ''', (appeal_id, session['user_id'], message))
                 conn.commit()
             flash('留言已送出', 'success')
-            conn.close()
             return redirect(url_for('admin_appeal_detail', appeal_id=appeal_id))
         else:
             # Handle status change actions
@@ -3443,19 +3005,18 @@ def admin_appeal_detail(appeal_id):
             
             # Insert message if provided with status change
             if message:
-                conn.execute('''
+                conn.execute(f'''
                     INSERT INTO appeal_messages (appeal_id, sender_id, sender_role, message, created_at)
-                    VALUES (?, ?, 'admin', ?, datetime('now', 'localtime'))
+                    VALUES (?, ?, 'admin', ?, {NOW_SQL})
                 ''', (appeal_id, session['user_id'], message))
                 
-            conn.execute('''
+            conn.execute(f'''
                 UPDATE order_appeals 
-                SET status = ?, updated_at = datetime('now', 'localtime')
+                SET status = ?, updated_at = {NOW_SQL}
                 WHERE id = ?
             ''', (status, appeal_id))
             conn.commit()
             flash('案件狀態已更新', 'success')
-            conn.close()
             return redirect(url_for('admin_appeals'))
         
     appeal = conn.execute('''
@@ -3470,7 +3031,6 @@ def admin_appeal_detail(appeal_id):
     ''', (appeal_id,)).fetchone()
     
     if not appeal:
-        conn.close()
         return redirect(url_for('admin_appeals'))
     
     # Fetch all messages
@@ -3481,17 +3041,13 @@ def admin_appeal_detail(appeal_id):
         WHERE m.appeal_id = ?
         ORDER BY m.created_at ASC
     ''', (appeal_id,)).fetchall()
-    
-    conn.close()
-        
+
     return render_template('admin_appeal_detail.html', appeal=appeal, messages=messages, active_page='appeals', title='案件詳情')
 
 @app.route('/admin/platform-settings', methods=('GET', 'POST'))
+@role_required(Role.ADMIN)
 def admin_fee_settings():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     if request.method == 'POST':
         try:
@@ -3504,12 +3060,12 @@ def admin_fee_settings():
             # Legacy field update just in case
             commission_rate = commission_general 
             
-            conn.execute('''
+            conn.execute(f'''
                 UPDATE platform_settings 
                 SET commission_rate = ?, 
                     commission_general = ?, commission_advanced = ?, commission_professional = ?,
                     level_adv_threshold = ?, level_pro_threshold = ?,
-                    updated_at = datetime('now', 'localtime')
+                    updated_at = {NOW_SQL}
                 WHERE id = 1
             ''', (commission_rate, commission_general, commission_advanced, commission_professional, 
                   level_adv_threshold, level_pro_threshold))
@@ -3519,7 +3075,6 @@ def admin_fee_settings():
             flash('請輸入有效的數值', 'error')
     
     settings = conn.execute('SELECT * FROM platform_settings LIMIT 1').fetchone()
-    conn.close()
     
     return render_template('admin_platform_settings.html',
                           title='平台相關設定',
@@ -3528,11 +3083,9 @@ def admin_fee_settings():
 
 # Admin Withdrawal Management Routes
 @app.route('/admin/withdrawal-requests')
+@role_required(Role.ADMIN)
 def admin_withdrawal_requests():
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     # Get all withdrawal requests with user info
     requests = conn.execute('''
@@ -3544,7 +3097,6 @@ def admin_withdrawal_requests():
         ORDER BY w.created_at DESC
     ''').fetchall()
     
-    conn.close()
     
     pending_requests = [dict(r) for r in requests if r['status'] == 'pending']
     history_requests = [dict(r) for r in requests if r['status'] != 'pending']
@@ -3560,23 +3112,19 @@ def admin_withdrawal_requests():
                           platform_balance=platform_account['balance'])
 
 @app.route('/admin/withdrawal/<int:request_id>/approve', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_approve_withdrawal(request_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     # Get withdrawal request
     withdrawal = conn.execute('SELECT * FROM withdrawal_requests WHERE id = ?', 
                              (request_id,)).fetchone()
     
     if not withdrawal:
-        conn.close()
         flash('找不到該提領申請', 'error')
         return redirect(url_for('admin_withdrawal_requests'))
     
     if withdrawal['status'] != 'pending':
-        conn.close()
         flash('此申請已處理過', 'error')
         return redirect(url_for('admin_withdrawal_requests'))
     
@@ -3585,32 +3133,31 @@ def admin_approve_withdrawal(request_id):
                           (withdrawal['user_id'],)).fetchone()
     
     if not account or account['balance'] < withdrawal['amount']:
-        conn.close()
         flash('訓練師餘額不足，無法核准提領', 'error')
         return redirect(url_for('admin_withdrawal_requests'))
     
     try:
         # Update account balance
         new_balance = account['balance'] - withdrawal['amount']
-        conn.execute('''
+        conn.execute(f'''
             UPDATE trainer_accounts 
-            SET balance = ?, updated_at = datetime('now', 'localtime')
+            SET balance = ?, updated_at = {NOW_SQL}
             WHERE user_id = ?
         ''', (new_balance, withdrawal['user_id']))
 
         # Record transaction
-        conn.execute('''
+        conn.execute(f'''
             INSERT INTO account_transactions 
             (user_id, amount, type, description, created_at)
-            VALUES (?, ?, 'withdrawal', ?, datetime('now', 'localtime'))
+            VALUES (?, ?, 'withdrawal', ?, {NOW_SQL})
         ''', (withdrawal['user_id'], -withdrawal['amount'], 
               f'提領申請 #{request_id} 已核准'))
         
         # Update withdrawal request status
-        conn.execute('''
+        conn.execute(f'''
             UPDATE withdrawal_requests
             SET status = 'approved', 
-                processed_at = datetime('now', 'localtime'),
+                processed_at = {NOW_SQL},
                 processed_by = ?
             WHERE id = ?
         ''', (session['user_id'], request_id))
@@ -3625,52 +3172,44 @@ def admin_approve_withdrawal(request_id):
         conn.rollback()
         flash(f'處理失敗: {str(e)}', 'error')
     
-    conn.close()
     return redirect(url_for('admin_withdrawal_requests'))
 
 @app.route('/admin/withdrawal/<int:request_id>/reject', methods=['POST'])
+@role_required(Role.ADMIN)
 def admin_reject_withdrawal(request_id):
-    if session.get('user_role') != 'admin':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     withdrawal = conn.execute('SELECT * FROM withdrawal_requests WHERE id = ?',
                              (request_id,)).fetchone()
     
     if not withdrawal:
-        conn.close()
         flash('找不到該提領申請', 'error')
         return redirect(url_for('admin_withdrawal_requests'))
     
     if withdrawal['status'] != 'pending':
-        conn.close()
         flash('此申請已處理過', 'error')
         return redirect(url_for('admin_withdrawal_requests'))
     
     admin_note = request.form.get('admin_note', '')
     
-    conn.execute('''
+    conn.execute(f'''
         UPDATE withdrawal_requests
         SET status = 'rejected',
             admin_note = ?,
-            processed_at = datetime('now', 'localtime'),
+            processed_at = {NOW_SQL},
             processed_by = ?
         WHERE id = ?
     ''', (admin_note, session['user_id'], request_id))
     
     conn.commit()
-    conn.close()
     
     flash('已拒絕提領申請', 'info')
     return redirect(url_for('admin_withdrawal_requests'))
 
 @app.route('/trainer/level-history')
+@role_required(Role.TRAINER)
 def trainer_level_history():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     
     level_history = conn.execute('''
         SELECT * FROM trainer_level_history 
@@ -3678,7 +3217,6 @@ def trainer_level_history():
         ORDER BY created_at DESC
     ''', (session['user_id'],)).fetchall()
     
-    conn.close()
     
     return render_template('trainer_level_history.html', 
                           level_history=level_history, 
@@ -3686,20 +3224,18 @@ def trainer_level_history():
 
 # Trainer Account Routes
 @app.route('/trainer/account')
+@role_required(Role.TRAINER)
 def trainer_account():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-
-    conn = get_db_connection()
+    conn = get_db()
 
     # Get or create account
     account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?',
                           (session['user_id'],)).fetchone()
 
     if not account:
-        conn.execute('''
+        conn.execute(f'''
             INSERT INTO trainer_accounts (user_id, balance, total_earned, created_at, updated_at)
-            VALUES (?, 0.0, 0.0, datetime('now', 'localtime'), datetime('now', 'localtime'))
+            VALUES (?, 0.0, 0.0, {NOW_SQL}, {NOW_SQL})
         ''', (session['user_id'],))
         conn.commit()
         account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?',
@@ -3726,11 +3262,8 @@ def trainer_account():
     
     transactions_rows = conn.execute(sql_query, params).fetchall()
     
-    # Calculate running balance
-    # Note: To show correct running balance with filtering, we need all transactions first
-    # Or we can recalculate from the total earned/withdrawn?
-    # Simplest accurate way: Get all transactions to compute balances, THEN filter for display
-    
+    # Running balance must be computed over ALL transactions, then filtered for display
+
     all_transactions_rows = conn.execute('''
         SELECT t.*, o.booking_date, o.booking_time
         FROM account_transactions t
@@ -3759,13 +3292,13 @@ def trainer_account():
     
     # Get trainer level settings
     settings = get_platform_settings()
-    current_level = account['current_level'] if 'current_level' in account.keys() and account['current_level'] else 'general'
+    current_level = account['current_level'] if 'current_level' in account.keys() and account['current_level'] else TrainerLevel.GENERAL
     
     # Determine current rate for display
     current_rate = settings.get('commission_general', 15.0)
-    if current_level == 'professional':
+    if current_level == TrainerLevel.PROFESSIONAL:
         current_rate = settings.get('commission_professional', 5.0)
-    elif current_level == 'advanced':
+    elif current_level == TrainerLevel.ADVANCED:
         current_rate = settings.get('commission_advanced', 10.0)
     
     # Get withdrawal requests for this trainer
@@ -3776,7 +3309,6 @@ def trainer_account():
     ''', (session['user_id'],)).fetchall()
     withdrawal_requests = [dict(r) for r in withdrawal_requests]
         
-    conn.close()
 
     return render_template('trainer_account.html',
                           title='平台帳戶',
@@ -3789,18 +3321,15 @@ def trainer_account():
                           withdrawal_requests=withdrawal_requests)
 
 @app.route('/trainer/withdrawal', methods=['GET', 'POST'])
+@role_required(Role.TRAINER)
 def trainer_withdrawal():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-    
-    conn = get_db_connection()
+    conn = get_db()
     
     # Get account balance
     account = conn.execute('SELECT * FROM trainer_accounts WHERE user_id = ?', 
                           (session['user_id'],)).fetchone()
     
     if not account:
-        conn.close()
         flash('請先完成訂單以建立帳戶', 'error')
         return redirect(url_for('trainer_account'))
     
@@ -3831,16 +3360,16 @@ def trainer_withdrawal():
                     ''', (session['user_id'], bank_code, bank_account)).fetchone()
                     
                     if not existing:
-                        conn.execute('''
+                        conn.execute(f'''
                             INSERT INTO trainer_bank_accounts (user_id, bank_code, bank_account, account_holder, created_at)
-                            VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+                            VALUES (?, ?, ?, ?, {NOW_SQL})
                         ''', (session['user_id'], bank_code, bank_account, account_holder))
                 
                 # Create withdrawal request
-                conn.execute('''
+                conn.execute(f'''
                     INSERT INTO withdrawal_requests 
                     (user_id, amount, bank_name, bank_account, account_holder, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, 'pending', datetime('now', 'localtime'))
+                    VALUES (?, ?, ?, ?, ?, 'pending', {NOW_SQL})
                 ''', (session['user_id'], amount, bank_code, bank_account, account_holder))
                 
                 conn.commit()
@@ -3855,7 +3384,6 @@ def trainer_withdrawal():
         SELECT * FROM trainer_bank_accounts WHERE user_id = ? ORDER BY created_at DESC
     ''', (session['user_id'],)).fetchall()
     
-    conn.close()
     
     return render_template('trainer_withdrawal.html',
                           title='申請提領',
@@ -3867,10 +3395,8 @@ def trainer_withdrawal():
 
 # Review System APIs
 @app.route('/api/reviews', methods=['POST'])
+@login_required(json=True)
 def submit_review():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
     data = request.get_json()
     order_id = data.get('order_id')
     rating = data.get('rating')
@@ -3886,16 +3412,14 @@ def submit_review():
     except ValueError:
         return {'error': 'Invalid rating'}, 400
 
-    conn = get_db_connection()
+    conn = get_db()
     
     # Verify order and permission
     order = conn.execute('SELECT * FROM orders WHERE id = ?', (order_id,)).fetchone()
     if not order:
-        conn.close()
         return {'error': 'Order not found'}, 404
         
-    if order['status'] != 'completed':
-        conn.close()
+    if order['status'] != OrderStatus.COMPLETED:
         return {'error': 'Order must be completed to review'}, 400
 
     current_user_id = session['user_id']
@@ -3905,14 +3429,13 @@ def submit_review():
         # Buyer reviewing Trainer
         target_user_id = order['seller_id']
         listing_id = order['listing_id']
-        review_type = 'buyer_to_trainer'
+        review_type = ReviewType.BUYER_TO_TRAINER
     elif current_user_id == order['seller_id']:
         # Trainer reviewing Buyer
         target_user_id = order['buyer_id']
         listing_id = None # Trainer reviewing buyer doesn't attach to a listing specifically
-        review_type = 'trainer_to_buyer'
+        review_type = ReviewType.TRAINER_TO_BUYER
     else:
-        conn.close()
         return {'error': 'Unauthorized'}, 403
 
     # Check if review already exists
@@ -3922,39 +3445,31 @@ def submit_review():
     ''', (order_id, current_user_id)).fetchone()
     
     if existing:
-        conn.close()
         return {'error': 'You have already reviewed this order'}, 400
 
     try:
-        conn.execute('''
+        conn.execute(f'''
             INSERT INTO reviews (order_id, source_user_id, target_user_id, listing_id, rating, comment, review_type, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, {NOW_SQL})
         ''', (order_id, current_user_id, target_user_id, listing_id, rating, comment, review_type))
         conn.commit()
     except Exception as e:
-        conn.close()
         return {'error': str(e)}, 500
-        
-    conn.close()
-    
+
     # Update trainer level if review target was trainer
-    if review_type == 'buyer_to_trainer':
+    if review_type == ReviewType.BUYER_TO_TRAINER:
         try:
             update_trainer_level(target_user_id)
-        except Exception as e:
-            print(f"Failed to update trainer level: {e}")
-            
+        except Exception:
+            app.logger.exception('Failed to update trainer level')
+
     return {'success': True}
 
 @app.route('/api/users/<int:user_id>/reviews')
+@login_required(json=True)
 def get_user_reviews(user_id):
-    # API to fetch reviews RECEIVED by a user (e.g. Trainer checking Buyer's reviews)
-    if 'user_id' not in session:
-         return {'error': 'Unauthorized'}, 401
-         
-    # Optional: restricts who can see reviews? For now, public or at least logged in.
-    
-    conn = get_db_connection()
+    # Reviews RECEIVED by a user (e.g. a trainer checking a buyer); any logged-in user may view
+    conn = get_db()
     query = '''
         SELECT r.*, u.name as reviewer_name, u.nickname as reviewer_nickname, u.avatar as reviewer_avatar
         FROM reviews r
@@ -3964,17 +3479,14 @@ def get_user_reviews(user_id):
     '''
     params = (user_id,)
     reviews = conn.execute(query, params).fetchall()
-    conn.close()
     
     return {'reviews': [dict(r) for r in reviews]}
 
 @app.route('/trainer/reviews')
+@role_required(Role.TRAINER)
 def trainer_reviews_history():
-    if session.get('user_role') != 'trainer':
-        return redirect(url_for('index'))
-        
     filter_date = request.args.get('date')
-    conn = get_db_connection()
+    conn = get_db()
     
     query = '''
         SELECT r.*, u.name as buyer_name, u.nickname as buyer_nickname, u.avatar as buyer_avatar
@@ -4002,7 +3514,6 @@ def trainer_reviews_history():
     avg_rating = stats_row['avg_rating'] if stats_row and stats_row['avg_rating'] else 0
     total_reviews = stats_row['total_reviews']
     
-    conn.close()
     
     return render_template('trainer_reviews.html', 
                           reviews=[dict(r) for r in reviews],
@@ -4012,11 +3523,9 @@ def trainer_reviews_history():
                           active_page='trainer_reviews')
 
 @app.route('/trainer/blacklist')
+@role_required(Role.TRAINER, redirect_to='login')
 def trainer_blacklist():
-    if 'user_id' not in session or session.get('user_role') != 'trainer':
-        return redirect(url_for('login'))
-        
-    conn = get_db_connection()
+    conn = get_db()
     blacklist = conn.execute('''
         SELECT b.*, u.name, u.nickname, u.email, u.avatar 
         FROM blacklists b
@@ -4024,22 +3533,19 @@ def trainer_blacklist():
         WHERE b.trainer_id = ?
         ORDER BY b.created_at DESC
     ''', (session['user_id'],)).fetchall()
-    conn.close()
     
     return render_template('trainer_blacklist.html', blacklist=blacklist, active_page='blacklist')
 
 @app.route('/api/blacklist/add', methods=['POST'])
+@role_required(Role.TRAINER, json=True, status=401)
 def add_to_blacklist():
-    if 'user_id' not in session or session.get('user_role') != 'trainer':
-        return {'error': 'Unauthorized'}, 401
-    
     data = request.get_json()
     consumer_id = data.get('consumer_id')
     
     if not consumer_id:
         return {'error': 'Missing consumer_id'}, 400
         
-    conn = get_db_connection()
+    conn = get_db()
     try:
         conn.execute('INSERT INTO blacklists (trainer_id, consumer_id) VALUES (?, ?)', (session['user_id'], consumer_id))
         conn.commit()
@@ -4047,28 +3553,23 @@ def add_to_blacklist():
     except sqlite3.IntegrityError:
         success = False # Already blacklisted
     except Exception as e:
-        print(f"Error adding to blacklist: {e}")
-        conn.close()
+        app.logger.exception('Error adding to blacklist')
         return {'error': str(e)}, 500
     
-    conn.close()
     return {'success': success}
 
 @app.route('/api/blacklist/remove', methods=['POST'])
+@role_required(Role.TRAINER, json=True, status=401)
 def remove_from_blacklist():
-    if 'user_id' not in session or session.get('user_role') != 'trainer':
-        return {'error': 'Unauthorized'}, 401
-    
     data = request.get_json()
     consumer_id = data.get('consumer_id')
     
     if not consumer_id:
         return {'error': 'Missing consumer_id'}, 400
         
-    conn = get_db_connection()
+    conn = get_db()
     conn.execute('DELETE FROM blacklists WHERE trainer_id = ? AND consumer_id = ?', (session['user_id'], consumer_id))
     conn.commit()
-    conn.close()
     return {'success': True}
 
 if __name__ == '__main__':

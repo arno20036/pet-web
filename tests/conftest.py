@@ -1,8 +1,8 @@
 """Shared pytest fixtures.
 
 Every test runs against a *copy* of database.db in tmp_path, never the original.
-The `app` fixture works both before the refactor (module-level `app` in app.py
-reading the global DB_NAME) and after it (pet_platform.create_app()).
+The `app` fixture works both before step 2 (module-level `app` in app.py,
+database path in app.config['DATABASE']) and after it (pet_platform.create_app()).
 """
 import shutil
 import sqlite3
@@ -31,8 +31,8 @@ def _build_app(db_path, monkeypatch):
         flask_app = create_app({'TESTING': True, 'DATABASE': str(db_path)})
     else:
         import app as app_module  # before step 2
-        monkeypatch.setattr(app_module, 'DB_NAME', str(db_path))
         flask_app = app_module.app
+        monkeypatch.setitem(flask_app.config, 'DATABASE', str(db_path))
         monkeypatch.setitem(flask_app.config, 'TESTING', True)
     return flask_app
 
