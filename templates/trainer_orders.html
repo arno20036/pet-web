@@ -55,12 +55,12 @@
             </div>
             <!-- Actions -->
             <div style="display: flex; gap: 10px;">
-                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='accept') }}" method="post"
+                <form action="{{ url_for('trainer.trainer_order_action', order_id=order.id, action='accept') }}" method="post"
                     onsubmit="return confirm('確定接受此訂單？')">
                     <button type="submit" class="btn btn-success"
                         style="background-color: #10b981; border: none; color: white;">接受</button>
                 </form>
-                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='reject') }}" method="post"
+                <form action="{{ url_for('trainer.trainer_order_action', order_id=order.id, action='reject') }}" method="post"
                     onsubmit="return confirm('確定拒絕此訂單？')">
                     <button type="submit" class="btn btn-danger"
                         style="background-color: #ef4444; border: none; color: white;">拒絕</button>
@@ -84,7 +84,7 @@
                 style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
                 <div style="display: flex; gap: 15px; align-items: start;">
                     {% if order.buyer_avatar %}
-                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                    <img src="{{ url_for('main.uploaded_file', filename=order.buyer_avatar) }}"
                         style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
                     {% else %}
                     <div
@@ -144,7 +144,7 @@
                 </button>
                 {% endif %}
 
-                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='start') }}" method="post"
+                <form action="{{ url_for('trainer.trainer_order_action', order_id=order.id, action='start') }}" method="post"
                     onsubmit="return confirm('確定開始此行程？')">
 
                     <!-- ... (end of file) ... -->
@@ -180,7 +180,7 @@
                 style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
                 <div style="display: flex; gap: 15px; align-items: start;">
                     {% if order.buyer_avatar %}
-                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                    <img src="{{ url_for('main.uploaded_file', filename=order.buyer_avatar) }}"
                         style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
                     {% else %}
                     <div
@@ -225,7 +225,7 @@
             </div>
             <!-- Actions -->
             <div style="display: flex; gap: 10px;">
-                <form action="{{ url_for('trainer_order_action', order_id=order.id, action='complete') }}" method="post"
+                <form action="{{ url_for('trainer.trainer_order_action', order_id=order.id, action='complete') }}" method="post"
                     onsubmit="return confirm('確定完成此行程？請確保服務已結束。')">
                     <button type="submit" class="btn btn-success"
                         style="background-color: #10b981; border: none; color: white;">完成行程</button>
@@ -245,7 +245,7 @@
                 style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
                 <div style="display: flex; gap: 15px; align-items: start;">
                     {% if order.buyer_avatar %}
-                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                    <img src="{{ url_for('main.uploaded_file', filename=order.buyer_avatar) }}"
                         style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
                     {% else %}
                     <div
@@ -327,7 +327,7 @@
                 style="display: none; margin-top: 10px; background: #f9fafb; padding: 15px; border-radius: 8px;">
                 <div style="display: flex; gap: 15px; align-items: start;">
                     {% if order.buyer_avatar %}
-                    <img src="{{ url_for('uploaded_file', filename=order.buyer_avatar) }}"
+                    <img src="{{ url_for('main.uploaded_file', filename=order.buyer_avatar) }}"
                         style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
                     {% else %}
                     <div

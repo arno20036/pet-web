@@ -19,13 +19,13 @@
         {% for listing in published %}
         <div
             style="display: flex; gap: 20px; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}" target="_blank">
-                <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+            <a href="{{ url_for('main.listing_detail', listing_id=listing['id']) }}" target="_blank">
+                <img src="{{ url_for('main.uploaded_file', filename=listing['pet_image']) }}"
                     style="width: 120px; height: 90px; object-fit: cover; border-radius: 4px; cursor: pointer;">
             </a>
             <div style="flex: 1;">
                 <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">
-                    <a href="{{ url_for('listing_detail', listing_id=listing['id']) }}" target="_blank"
+                    <a href="{{ url_for('main.listing_detail', listing_id=listing['id']) }}" target="_blank"
                         style="text-decoration: none; color: inherit; cursor: pointer;">
                         {{ listing['pet_name'] or '未命名寵物' }}
                     </a>
@@ -37,9 +37,9 @@
                 <div style="color: #888; font-size: 0.85rem;">上架時間: {{ listing['created_at'].split(' ')[0] }}</div>
             </div>
             <div style="display: flex; flex-direction: column; justify-content: center; gap: 5px;">
-                <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-primary"
+                <a href="{{ url_for('trainer.trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-primary"
                     style="padding: 5px 15px; font-size: 0.9rem;">查看詳情</a>
-                <form action="{{ url_for('trainer_close_listing', listing_id=listing['id']) }}" method="post">
+                <form action="{{ url_for('trainer.trainer_close_listing', listing_id=listing['id']) }}" method="post">
                     <button type="submit" class="btn btn-outline"
                         style="color: #dc2626; border-color: #dc2626; padding: 5px 15px; width: 100%;">下架</button>
                 </form>
@@ -57,7 +57,7 @@
         {% for listing in unpublished %}
         <div
             style="display: flex; gap: 20px; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 15px; background-color: #f9f9f9;">
-            <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+            <img src="{{ url_for('main.uploaded_file', filename=listing['pet_image']) }}"
                 style="width: 120px; height: 90px; object-fit: cover; border-radius: 4px; opacity: 0.7;">
             <div style="flex: 1;">
                 <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px; color: #666;">
@@ -69,12 +69,12 @@
                 <div style="color: #666; font-size: 0.9rem;">價格: ${{ listing['price'] }}/hr</div>
             </div>
             <div style="display: flex; flex-direction: column; justify-content: center; gap: 5px;">
-                <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-primary"
+                <a href="{{ url_for('trainer.trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-primary"
                     style="padding: 5px 15px; font-size: 0.9rem;">查看詳情</a>
-                <form action="{{ url_for('trainer_republish_listing', listing_id=listing['id']) }}" method="post">
+                <form action="{{ url_for('trainer.trainer_republish_listing', listing_id=listing['id']) }}" method="post">
                     <button type="submit" class="btn btn-outline" style="padding: 5px 15px; width: 100%;">重新上架</button>
                 </form>
-                <form action="{{ url_for('trainer_delete_listing', listing_id=listing['id']) }}" method="post"
+                <form action="{{ url_for('trainer.trainer_delete_listing', listing_id=listing['id']) }}" method="post"
                     onsubmit="return confirm('確定要永久刪除此刊登內容嗎？此動作無法復原。');">
                     <button type="submit" class="btn btn-outline"
                         style="color: #dc2626; border-color: #dc2626; padding: 5px 15px; width: 100%;">刪除</button>
@@ -105,7 +105,7 @@
                     {% if listing['status'] == 'modification_pending' %}修改審核中...{% else %}審核中...{% endif %}
                 </div>
             </div>
-            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+            <a href="{{ url_for('trainer.trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
                 style="padding: 5px 10px; font-size: 0.8rem;">查看詳情</a>
         </div>
         {% endfor %}
@@ -126,7 +126,7 @@
                 <div style="font-size: 0.9rem; color: #888;">申請時間: {{ listing['created_at'] }}</div>
                 <div style="color: #10b981; font-size: 0.9rem;">已通過</div>
             </div>
-            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+            <a href="{{ url_for('trainer.trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
                 style="padding: 5px 10px; font-size: 0.8rem;">查看詳情</a>
         </div>
         {% endfor %}
@@ -147,7 +147,7 @@
                 <div style="font-size: 0.9rem; color: #888;">申請時間: {{ listing['created_at'] }}</div>
                 <div style="color: #dc2626; font-size: 0.9rem;">已駁回</div>
             </div>
-            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+            <a href="{{ url_for('trainer.trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
                 style="padding: 5px 10px; font-size: 0.8rem;">查看詳情</a>
         </div>
         {% endfor %}

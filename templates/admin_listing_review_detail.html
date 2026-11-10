@@ -4,7 +4,7 @@
 <h2>刊登詳情 - {{ listing['trainer_name'] }}</h2>
 <div class="card">
     <div style="margin-bottom: 20px;">
-        <a href="{{ url_for('admin_listing_modification_review') if is_modification else url_for('admin_listing_review') }}"
+        <a href="{{ url_for('admin.admin_listing_review') }}"
             style="color: var(--text-muted); text-decoration: none;">&larr;
             返回列表</a>
     </div>
@@ -59,7 +59,7 @@
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             {% for image in images %}
             <div style="border: 1px solid #ddd; padding: 5px; border-radius: 8px;">
-                <img src="{{ url_for('uploaded_file', filename=image) }}"
+                <img src="{{ url_for('main.uploaded_file', filename=image) }}"
                     style="height: 150px; object-fit: cover; border-radius: 4px;">
             </div>
             {% endfor %}
@@ -68,30 +68,16 @@
 
     <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
 
-
-
     <div style="display: flex; gap: 10px;">
-        {% if is_modification %}
-        <form action="{{ url_for('admin_listing_modification_approve', listing_id=listing['id']) }}" method="post"
-            style="display: inline;">
-            <button type="submit" class="btn btn-primary" onclick="return confirm('確定要核准此修改？')">核准修改</button>
-        </form>
-        <form action="{{ url_for('admin_listing_modification_reject', listing_id=listing['id']) }}" method="post"
-            style="display: inline;">
-            <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;"
-                onclick="return confirm('確定要駁回此修改？')">駁回修改</button>
-        </form>
-        {% else %}
-        <form action="{{ url_for('admin_listing_approve', listing_id=listing['id']) }}" method="post"
+        <form action="{{ url_for('admin.admin_listing_approve', listing_id=listing['id']) }}" method="post"
             style="display: inline;">
             <button type="submit" class="btn btn-primary" onclick="return confirm('確定要核准此刊登？')">核准刊登</button>
         </form>
-        <form action="{{ url_for('admin_listing_reject', listing_id=listing['id']) }}" method="post"
+        <form action="{{ url_for('admin.admin_listing_reject', listing_id=listing['id']) }}" method="post"
             style="display: inline;">
             <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;"
                 onclick="return confirm('確定要駁回此刊登？')">駁回刊登</button>
         </form>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

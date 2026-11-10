@@ -4,7 +4,7 @@
 <h2>會員詳細資料 - {{ user['name'] }}</h2>
 <div class="card">
     <div style="margin-bottom: 20px;">
-        <a href="{{ url_for('admin_member_management') }}"
+        <a href="{{ url_for('admin.admin_member_management') }}"
             style="color: var(--text-muted); text-decoration: none;">&larr; 返回列表</a>
     </div>
 
@@ -116,9 +116,9 @@
     <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
 
     <div style="display: flex; gap: 10px;">
-        <a href="{{ url_for('admin_member_edit', user_id=user['id']) }}" class="btn btn-primary">修改會員資料</a>
+        <a href="{{ url_for('admin.admin_member_edit', user_id=user['id']) }}" class="btn btn-primary">修改會員資料</a>
 
-        <form action="{{ url_for('admin_member_delete', user_id=user['id']) }}" method="post" style="display: inline;">
+        <form action="{{ url_for('admin.admin_member_delete', user_id=user['id']) }}" method="post" style="display: inline;">
             <button type="submit" class="btn btn-outline" style="color: #dc2626; border-color: #dc2626;"
                 onclick="return confirm('確定要刪除此會員？此動作無法復原。')">刪除會員</button>
         </form>

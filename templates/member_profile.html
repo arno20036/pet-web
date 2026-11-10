@@ -22,7 +22,7 @@
                 <div
                     style="width: 120px; height: 120px; border-radius: 50%; overflow: hidden; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); background-color: #f3f4f6; display: flex; align-items: center; justify-content: center;">
                     <img id="avatarPreview"
-                        src="{{ url_for('uploaded_file', filename=user['avatar']) if user['avatar'] else 'https://via.placeholder.com/150?text=Avatar' }}"
+                        src="{{ url_for('main.uploaded_file', filename=user['avatar']) if user['avatar'] else 'https://via.placeholder.com/150?text=Avatar' }}"
                         alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">
                 </div>
 
@@ -99,7 +99,7 @@
                 <div style="color: #888; font-size: 0.8rem;">分行：{{ account.branch_code }}</div>
                 {% endif %}
             </div>
-            <form method="post" action="{{ url_for('delete_user_bank_account', account_id=account.id) }}"
+            <form method="post" action="{{ url_for('member.delete_user_bank_account', account_id=account.id) }}"
                 onsubmit="return confirm('確定要刪除此帳戶嗎？');" style="margin: 0;">
                 <button type="submit" class="btn btn-sm"
                     style="background: #ef4444; color: white; padding: 5px 10px; border-radius: 4px;">
@@ -124,7 +124,7 @@
 
     <div id="addBankForm"
         style="display: none; margin-top: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;">
-        <form method="post" action="{{ url_for('add_bank_account') }}">
+        <form method="post" action="{{ url_for('member.add_bank_account') }}">
             <div class="form-group">
                 <label>銀行代碼</label>
                 <input type="text" name="bank_code" class="form-control" placeholder="例如：822 (中國信託)" required>

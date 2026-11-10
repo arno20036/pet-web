@@ -30,7 +30,7 @@
                 <td style="padding: 10px;">{{ listing['price'] }}</td>
                 <td style="padding: 10px;">{{ listing['created_at'].split(' ')[0] }}</td>
                 <td style="padding: 10px;">
-                    <a href="{{ url_for('admin_listing_review_detail', listing_id=listing['id']) }}"
+                    <a href="{{ url_for('admin.admin_listing_review_detail', listing_id=listing['id']) }}"
                         class="btn btn-primary" style="padding: 5px 10px; font-size: 0.9rem;">查看詳情</a>
                 </td>
             </tr>

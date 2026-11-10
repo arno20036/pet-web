@@ -93,7 +93,7 @@
             </div>
 
             <div style="display: flex; gap: 10px;">
-                <form method="post" action="{{ url_for('admin_approve_withdrawal', request_id=req.id) }}"
+                <form method="post" action="{{ url_for('admin.admin_approve_withdrawal', request_id=req.id) }}"
                     style="flex: 1;">
                     <button type="submit" class="btn btn-primary" style="width: 100%;"
                         onclick="return confirm('確定要核准此提領申請嗎？\n\n提領金額：${{ '%.2f'|format(req.amount) }}\n訓練師餘額：${{ '%.2f'|format(req.current_balance or 0) }}\n\n核准後將從訓練師帳戶扣除該金額。')">

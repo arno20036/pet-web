@@ -22,7 +22,7 @@
                 <td style="padding: 10px;">{{ app['experience_years'] }} 年</td>
                 <td style="padding: 10px;">{{ app['created_at'] }}</td>
                 <td style="padding: 10px;">
-                    <a href="{{ url_for('admin_trainer_review_detail', app_id=app['id']) }}" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.9rem;">查看詳情</a>
+                    <a href="{{ url_for('admin.admin_trainer_review_detail', app_id=app['id']) }}" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.9rem;">查看詳情</a>
                 </td>
             </tr>
             {% endfor %}

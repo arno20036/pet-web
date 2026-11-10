@@ -26,7 +26,7 @@
                             {% for image in images %}
                             <div class="image-item" onclick="toggleDelete(this, '{{ image }}')"
                                 style="position: relative; aspect-ratio: 4/3; cursor: pointer; overflow: hidden; border-radius: 6px;">
-                                <img src="{{ url_for('uploaded_file', filename=image) }}"
+                                <img src="{{ url_for('main.uploaded_file', filename=image) }}"
                                     style="width: 100%; height: 100%; object-fit: cover; transition: all 0.3s ease;">
 
                                 <!-- Hover Overlay for Delete -->
@@ -204,7 +204,7 @@
 
         <div style="margin-top: 30px; display: flex; gap: 10px;">
             <button type="submit" class="btn btn-primary">修改申請</button>
-            <a href="{{ url_for('trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
+            <a href="{{ url_for('trainer.trainer_listing_detail', listing_id=listing['id']) }}" class="btn btn-outline"
                 style="text-decoration: none; color: #666;">取消</a>
         </div>
     </form>

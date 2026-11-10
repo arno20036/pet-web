@@ -11,20 +11,20 @@
             <!-- Main Image -->
             <div
                 style="border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                <img id="mainImage" src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}"
+                <img id="mainImage" src="{{ url_for('main.uploaded_file', filename=listing['pet_image']) }}"
                     style="width: 100%; height: 500px; object-fit: cover;">
             </div>
             <!-- Thumbnails -->
             {% if images %}
             <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;">
                 <!-- Cover image as first thumb -->
-                <img src="{{ url_for('uploaded_file', filename=listing['pet_image']) }}" onclick="changeImage(this.src)"
+                <img src="{{ url_for('main.uploaded_file', filename=listing['pet_image']) }}" onclick="changeImage(this.src)"
                     style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid transparent; opacity: 0.8;"
                     onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
 
                 {% for img in images %}
                 {% if img != listing['pet_image'] %}
-                <img src="{{ url_for('uploaded_file', filename=img) }}" onclick="changeImage(this.src)"
+                <img src="{{ url_for('main.uploaded_file', filename=img) }}" onclick="changeImage(this.src)"
                     style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid transparent; opacity: 0.8;"
                     onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
                 {% endif %}
@@ -62,7 +62,7 @@
             </div>
 
             <!-- Trainer Info Mini Card -->
-            <a href="{{ url_for('trainer_public_listings', trainer_id=listing['trainer_id']) }}"
+            <a href="{{ url_for('main.trainer_public_listings', trainer_id=listing['trainer_id']) }}"
                 style="text-decoration: none; color: inherit; display: block;">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 30px; padding: 15px; background: #f9fafb; border-radius: 12px; transition: background-color 0.2s; border: 1px solid transparent;"
                     onmouseover="this.style.borderColor='var(--primary-color)'; this.style.backgroundColor='#f0f9ff';"
@@ -70,7 +70,7 @@
                     <div
                         style="width: 50px; height: 50px; border-radius: 50%; overflow: hidden; background: #e5e7eb; display: flex; align-items: center; justify-content: center;">
                         {% if listing['trainer_avatar'] %}
-                        <img src="{{ url_for('uploaded_file', filename=listing['trainer_avatar']) }}"
+                        <img src="{{ url_for('main.uploaded_file', filename=listing['trainer_avatar']) }}"
                             style="width: 100%; height: 100%; object-fit: cover;">
                         {% else %}
                         <span style="font-weight: bold; color: #666;">{{ listing['trainer_name'][0] }}</span>
@@ -111,14 +111,14 @@
 
                 {% if session.get('user_id') %}
                 {% if session.get('user_id') == listing['trainer_id'] %}
-                <a href="{{ url_for('trainer_listing_edit', listing_id=listing['id']) }}" class="btn btn-primary"
+                <a href="{{ url_for('trainer.trainer_listing_edit', listing_id=listing['id']) }}" class="btn btn-primary"
                     style="width: 100%; display: block; text-align: center; padding: 12px;">編輯刊登</a>
                 {% else %}
-                <a href="{{ url_for('booking_create', listing_id=listing['id']) }}" class="btn btn-primary"
+                <a href="{{ url_for('main.booking_create', listing_id=listing['id']) }}" class="btn btn-primary"
                     style="width: 100%; display: block; text-align: center; padding: 12px; text-decoration: none; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">立即預約</a>
                 {% endif %}
                 {% else %}
-                <a href="{{ url_for('login') }}?next={{ request.path }}" class="btn btn-primary"
+                <a href="{{ url_for('auth.login') }}?next={{ request.path }}" class="btn btn-primary"
                     style="width: 100%; display: block; text-align: center; padding: 12px;">登入以預約</a>
                 {% endif %}
             </div>
@@ -166,7 +166,7 @@
                         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 {% if review.reviewer_avatar %}
-                                <img src="{{ url_for('uploaded_file', filename=review.reviewer_avatar) }}"
+                                <img src="{{ url_for('main.uploaded_file', filename=review.reviewer_avatar) }}"
                                     style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover;">
                                 {% else %}
                                 <div

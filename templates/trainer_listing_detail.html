@@ -4,7 +4,7 @@
 <h2>刊登詳情</h2>
 <div class="card">
     <div style="margin-bottom: 20px;">
-        <a href="{{ url_for('trainer_manage_listings') }}"
+        <a href="{{ url_for('trainer.trainer_manage_listings') }}"
             style="color: var(--text-muted); text-decoration: none;">&larr; 返回管理列表</a>
     </div>
 
@@ -78,7 +78,7 @@
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             {% for image in images %}
             <div style="border: 1px solid #ddd; padding: 5px; border-radius: 8px;">
-                <img src="{{ url_for('uploaded_file', filename=image) }}" alt="寵物圖片"
+                <img src="{{ url_for('main.uploaded_file', filename=image) }}" alt="寵物圖片"
                     style="height: 150px; object-fit: cover; border-radius: 4px;">
             </div>
             {% endfor %}
@@ -90,14 +90,14 @@
     <div>
         {% if listing['status'] == 'modification_pending' %}
         <div style="display: flex; gap: 10px; align-items: center;">
-            <form action="{{ url_for('trainer_cancel_modification', listing_id=listing['id']) }}" method="post"
+            <form action="{{ url_for('trainer.trainer_cancel_modification', listing_id=listing['id']) }}" method="post"
                 onsubmit="return confirm('確定要取消修改申請嗎？取消後將移至已下架列表。');">
                 <button type="submit" class="btn btn-outline"
                     style="color: #dc2626; border-color: #dc2626;">取消修改申請</button>
             </form>
         </div>
         {% elif listing['status'] != 'approved' %}
-        <a href="{{ url_for('trainer_listing_edit', listing_id=listing['id']) }}" class="btn btn-primary">修改刊登資料</a>
+        <a href="{{ url_for('trainer.trainer_listing_edit', listing_id=listing['id']) }}" class="btn btn-primary">修改刊登資料</a>
         {% else %}
         <p class="text-muted">如需修改資料，請先將刊登內容下架。</p>
         {% endif %}
